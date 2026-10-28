@@ -7,7 +7,7 @@ Học lập trình web bằng PHP
 - Áp dụng migration `database/migrations/001_accounts_folders_quota.sql` lên database trước khi chạy ứng dụng. Tài khoản mới mặc định có quota 10 GB, theo `users.storage_limit` hiện có.
 - Áp dụng thêm `database/migrations/002_link_password.sql` để bật mật khẩu cho liên kết.
 - Đăng nhập qua `login.php`; người dùng mới có thể đăng ký. Để bật mật khẩu cho tài khoản đã tồn tại, chạy `php bin/set_user_password.php email@example.com`. Đổi quota bằng `php bin/set_user_quota.php email@example.com 2048` (đơn vị MB; không thể đặt thấp hơn dung lượng đang dùng).
-- Chạy ứng dụng qua PHP server, ví dụ: `php -S localhost:8000`, rồi mở `http://localhost:8000`.
+- Chạy ứng dụng qua PHP server, ví dụ: `php -S 127.0.0.1:8000`, rồi mở `http://127.0.0.1:8000`.
 - PHP cần bật các extension `pgsql` và `fileinfo`; giới hạn tải lên của PHP (`upload_max_filesize`, `post_max_size`) cần cho phép tệp tối đa 100 MB.
 - Trước khi gửi, giao diện kiểm tra phần mở rộng, kích thước và quota; API kiểm tra lại kích thước, MIME thực tế, quota và quyền sở hữu thư mục trước khi ghi. Định dạng mặc định là PDF, Office, TXT/CSV/MD, JPG/PNG/GIF/WEBP và ZIP. Khi thêm định dạng qua `FILESHARE_ALLOWED_EXTENSIONS`, cần bổ sung MIME tương ứng trong `api/upload.php`.
 - Nội dung tệp được lưu bên ngoài thư mục web, mặc định ở thư mục `../<tên-thư-mục-dự-án>-storage/uploads`. Có thể đổi bằng `FILESHARE_STORAGE_DIR`; tài khoản chạy PHP cần quyền ghi vào thư mục này.
@@ -49,4 +49,4 @@ Học lập trình web bằng PHP
 - 'SELECT * FROM users;': Truy vấn dữ liệu. Sau khi truy vấn xong, muốn thoát nhấn nút 'q'
 - \q: thoát postgre
 # Chạy WEB PHP:
-- php -S localhost:8000
+- php -S 127.0.0.1:8001
