@@ -250,6 +250,9 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 .folder-manager-card { padding: 20px; }
 .folder-list { display: grid; gap: 10px; margin-top: 18px; }
 .folder-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #eeeef4; border-radius: 8px; }
+.folder-item.folder-drop-target, .folder-contained-files.folder-drop-target { border-color: #6252e8; background: #f7f5ff; }
+.folder-open { cursor: pointer; }
+.folder-open:hover { color: #6252e8; }
 .folder-item > div { display: grid; gap: 4px; }
 .folder-item .folder-actions { display: flex; align-items: center; gap: 8px; }
 .folder-actions .folder-add-files { min-height: 30px; padding: 0 10px; font-size: 10px; }
@@ -259,6 +262,14 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 .folder-item strong { color: #424559; font-size: 12px; }
 .folder-item small, .folder-empty { color: #999baa; font-size: 10px; }
 .folder-empty { margin: 4px; }
+.folder-contained-files { display: grid; gap: 8px; margin: -2px 0 8px 20px; padding: 16px; border: 1px solid #eeeef4; border-radius: 8px; background: #fcfcff; }
+.folder-contained-files h3 { margin: 0; color: #424559; font-size: 13px; }
+.folder-contained-file-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.folder-contained-file-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #f0f0f5; color: #424559; font-size: 12px; }
+.folder-contained-file-list li:last-child { border-bottom: 0; }
+.folder-contained-file-list li[draggable="true"] { cursor: grab; }
+.folder-contained-file-list li[draggable="true"]:active { cursor: grabbing; }
+.folder-contained-file-list small { color: #999baa; white-space: nowrap; }
 .active-links-section { display: grid; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #eeeef4; }
 .active-links-section h2 { margin: 0; color: #33364b; font-size: 14px; }
 .active-links-section p { margin: 4px 0 0; color: #999baa; font-size: 11px; }
