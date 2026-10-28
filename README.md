@@ -19,34 +19,34 @@ Học lập trình web bằng PHP
 - Dọn tệp hết hạn theo hai bước: chạy `php bin/cleanup_expired.php` để xem trước danh sách; sau khi rà soát, chạy `php bin/cleanup_expired.php --delete` và nhập `XOA` để xác nhận. Lệnh xóa metadata, quyền cấp cho tệp và log gắn với tệp cùng nội dung trên ổ đĩa.
 - Máy chủ xác minh liên kết còn hoạt động, hạn dùng, giới hạn tải và mật khẩu trước khi gửi nội dung. Tệp riêng tư chỉ tải được khi người dùng đã đăng nhập và là chủ sở hữu hoặc có quyền trong `file_permissions`. File nội dung nằm ngoài thư mục web; `FILESHARE_STORAGE_DIR` bị từ chối nếu trỏ vào trong web root.
 # Git và Github:
-git remote -v: Kiểm tra project đang liên kết với repo GitHub nào.
-git remote set-url origin https://github.com/quocanhhoang/PTPMMNM-CNTT1812-NHOM-3.git: Cập nhật remote sau khi đổi tên repo
-git clone https://github.com/quocanhhoang/PTPMMNM-CNTT1812-NHOM-3.git: clone project từ github về máy
-git checkout -b <tên-branch>: tạo nhánh cá nhân
-git push -u origin <tên-branch>: Push branch lên github
-'git checkout main' và 'git pull origin main': Cập nhật main
-git checkout <tên-branch>: Quay lại branch riêng
-git merge <main>: ghép code từ main vào branch cá nhân (chỉ dùng sau khi checkout về branch của mình)
+- git remote -v: Kiểm tra project đang liên kết với repo GitHub nào.
+- git remote set-url origin https://github.com/quocanhhoang/PTPMMNM-CNTT1812-NHOM-3.git: Cập nhật remote sau - khi đổi tên repo
+- git clone https://github.com/quocanhhoang/PTPMMNM-CNTT1812-NHOM-3.git: clone project từ github về máy
+- git checkout -b <tên-branch>: tạo nhánh cá nhân
+- git push -u origin <tên-branch>: Push branch lên github
+- 'git checkout main' và 'git pull origin main': Cập nhật main
+- git checkout <tên-branch>: Quay lại branch riêng
+- git merge <main>: ghép code từ main vào branch cá nhân (chỉ dùng sau khi checkout về branch của mình)
 # Docker:
-curl -fsSL https://get.docker.com | sudo SBX=1 sh: cài đặt
-docker --version: xem version
-sudo docker run hello-world: test docker (Hello from Docker! là thành công)
-sudo usermod -aG docker $USER: Cấp quyền Docker cho user (group phải xuất hiện docker)
-docker ps -a: xem container
-docker rm <id>: xoá container
-docker rmi <name>: xoá image
+- curl -fsSL https://get.docker.com | sudo SBX=1 sh: cài đặt
+- docker --version: xem version
+- sudo docker run hello-world: test docker (Hello from Docker! là thành công)
+- sudo usermod -aG docker $USER: Cấp quyền Docker cho user (group phải xuất hiện docker)
+- docker ps -a: xem container
+- docker rm <id>: xoá container
+- docker rmi <name>: xoá image
 # Database
-sudo -u postgres psql: Đăng nhập PostgreSQL
-\du: Kiểm tra role
+- sudo -u postgres psql: Đăng nhập PostgreSQL
+- \du: Kiểm tra role
 * Từ đoạn này phải dùng lệnh sudo -u postgres psql thì mới dùng được những lệnh trong postgre
-'CREATE DATABASE "fileSharing";': Tạo database
-\c "fileSharing": Kết nối database
-\i 'database/migrations/001_accounts_folders_quota.sql': Áp dụng migration tài khoản, thư mục và quota (chạy từ thư mục gốc project)
-\i 'database/migrations/002_link_password.sql': Áp dụng migration mật khẩu liên kết
-\du: Xem danh sách bảng
-\d users: Xem cấu trúc bảng
-'INSERT INTO users (...);': Thêm dữ liệu mẫu
-'SELECT * FROM users;': Truy vấn dữ liệu. Sau khi truy vấn xong, muốn thoát nhấn nút 'q'
-\q: thoát postgre
+- 'CREATE DATABASE "fileSharing";': Tạo database
+- \c "fileSharing": Kết nối database
+- \i 'database/migrations/001_accounts_folders_quota.sql': Áp dụng migration tài khoản, thư mục và quota (chạy từ thư mục gốc project)
+- \i 'database/migrations/002_link_password.sql': Áp dụng migration mật khẩu liên kết
+- \du: Xem danh sách bảng
+- \d users: Xem cấu trúc bảng
+- 'INSERT INTO users (...);': Thêm dữ liệu mẫu
+- 'SELECT * FROM users;': Truy vấn dữ liệu. Sau khi truy vấn xong, muốn thoát nhấn nút 'q'
+- \q: thoát postgre
 # Chạy WEB PHP:
-php -S localhost:8000
+- php -S localhost:8000
