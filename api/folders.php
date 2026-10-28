@@ -8,8 +8,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $result = pg_query_params(
         $conn,
         'SELECT f.id, f.name, f.parent_id, f.created_at,
-                COUNT(files.id)::int AS file_count
+                COUNT(DISTINCT files.id)::int AS file_count,
+                COUNT(DISTINCT child.id)::int AS folder_count
          FROM folders f LEFT JOIN files ON files.folder_id = f.id
+         LEFT JOIN folders child ON child.parent_id = f.id
          WHERE f.owner_id = $1
          GROUP BY f.id ORDER BY f.name, f.id',
         [$userId]
@@ -25,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'name' => $folder['name'],
             'parent_id' => $folder['parent_id'] === null ? null : (int) $folder['parent_id'],
             'file_count' => (int) $folder['file_count'],
+            'folder_count' => (int) $folder['folder_count'],
             'created_at' => $folder['created_at'],
         ];
     }
@@ -79,6 +82,32 @@ if ($action === 'delete') {
     if (pg_num_rows($deleted) === 0) {
         json_response(['error' => 'Không tìm thấy thư mục hoặc thư mục chưa trống.'], 409);
     }
+    json_response(['success' => true]);
+}
+
+if ($action === 'move') {
+    $folderId = filter_var($body['folder_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $parentId = $body['parent_id'] ?? null;
+    if ($folderId === false) json_response(['error' => 'Thư mục được chọn không hợp lệ.'], 400);
+    if ($parentId === '') $parentId = null;
+    if ($parentId !== null) {
+        $parentId = filter_var($parentId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($parentId === false) json_response(['error' => 'Thư mục đích không hợp lệ.'], 400);
+        $parent = pg_query_params($conn, 'SELECT 1 FROM folders WHERE id = $1 AND owner_id = $2', [$parentId, $userId]);
+        if (!$parent || pg_num_rows($parent) === 0) json_response(['error' => 'Không tìm thấy thư mục đích.'], 404);
+        $cycle = pg_query_params(
+            $conn,
+            'WITH RECURSIVE descendants(id) AS (
+                SELECT id FROM folders WHERE id = $1 AND owner_id = $2
+                UNION ALL SELECT f.id FROM folders f JOIN descendants d ON f.parent_id = d.id WHERE f.owner_id = $2
+             ) SELECT 1 FROM descendants WHERE id = $3',
+            [$folderId, $userId, $parentId]
+        );
+        if (!$cycle || pg_num_rows($cycle) > 0) json_response(['error' => 'Không thể chuyển thư mục vào chính nó hoặc thư mục con.'], 409);
+    }
+    $moved = pg_query_params($conn, 'UPDATE folders SET parent_id = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND owner_id = $2 RETURNING id', [$folderId, $userId, $parentId]);
+    if (!$moved) json_response(['error' => 'Không thể chuyển thư mục.'], 500);
+    if (pg_num_rows($moved) === 0) json_response(['error' => 'Không tìm thấy thư mục.'], 404);
     json_response(['success' => true]);
 }
 

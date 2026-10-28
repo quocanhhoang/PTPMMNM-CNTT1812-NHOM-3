@@ -104,6 +104,7 @@
         const row = document.createElement("tr");
         row.className = "file-row";
         row.dataset.fileId = String(file.id);
+        row.draggable = true;
         row.dataset.filename = file.file_name;
         row.dataset.folderId = file.folder_id === null || file.folder_id === undefined ? "root" : String(file.folder_id);
         row.dataset.shareStatus = file.access_type;
@@ -172,7 +173,7 @@
     const renderFiles = () => {
         renderRows(recentFileRows, files.slice(0, 3));
         renderRows(allFileRows, files);
-        document.dispatchEvent(new CustomEvent("files:rendered"));
+        document.dispatchEvent(new CustomEvent("files:rendered", { detail: files }));
         document.getElementById("nav-file-count").textContent = String(files.length);
         document.getElementById("stat-file-count").textContent = String(files.length);
         const activeList = document.getElementById("active-links-list");

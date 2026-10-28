@@ -250,6 +250,24 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 .folder-manager-card { padding: 20px; }
 .folder-list { display: grid; gap: 10px; margin-top: 18px; }
 .folder-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #eeeef4; border-radius: 8px; }
+.folder-item { flex-wrap: wrap; transition: border-color .15s ease, background .15s ease; }
+.folder-item { cursor: default; }
+.folder-item.folder-drop-target { border-color: var(--purple); background: #f7f5ff; }
+.folder-copy { display: flex; align-items: center; gap: 9px; min-width: 180px; }
+.folder-label { display: grid; gap: 4px; }
+.folder-open { cursor: grab; }
+.folder-open:active { cursor: grabbing; }
+.folder-toggle { display: grid; width: 25px; height: 25px; place-items: center; padding: 0; border: 1px solid #e8e6f3; border-radius: 6px; background: #fff; color: var(--purple); cursor: pointer; }
+.folder-open:hover, .folder-open:focus-visible { color: var(--purple); }
+.folder-contents { display: grid; gap: 7px; width: 100%; padding: 12px 0 2px; border-top: 1px solid #f0f0f5; }
+.folder-contents > .folder-item { margin-left: 20px; background: #fcfbff; }
+.folder-file-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 9px; border-radius: 6px; background: #fafaff; color: #55586b; font-size: 11px; }
+.folder-file-row small { color: #999baa; }
+.file-folder-browser { display: grid; gap: 7px; margin-top: 16px; padding: 14px; border: 1px solid #eeeef4; border-radius: 9px; background: #fdfdff; }
+.file-folder-browser h2 { margin: 0 0 3px; color: #45485d; font-size: 12px; }
+.file-folder-root, .file-folder-chip { min-height: 34px; padding: 9px 11px; border: 1px dashed #d9d6ed; border-radius: 7px; color: #66697a; font-size: 10px; }
+.file-folder-chip { border-style: solid; background: #fff; cursor: grab; }
+.file-folder-root.folder-drop-target, .file-folder-chip.folder-drop-target { border-color: var(--purple); background: #f3f0ff; color: var(--purple); }
 .folder-item > div { display: grid; gap: 4px; }
 .folder-item .folder-actions { display: flex; align-items: center; gap: 8px; }
 .folder-actions .folder-add-files { min-height: 30px; padding: 0 10px; font-size: 10px; }
