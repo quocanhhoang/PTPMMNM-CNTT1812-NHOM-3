@@ -263,16 +263,35 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 #move-file-form .text-input { min-width: 0; flex: 1; }
 .folder-manager-card { padding: 20px; }
 .folder-list { display: grid; gap: 10px; margin-top: 18px; }
-.folder-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #eeeef4; border-radius: 8px; }
-.folder-item > div { display: grid; gap: 4px; }
+.folder-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 13px; border: 1px solid #eeeef4; border-radius: 8px; transition: border-color .15s ease, background .15s ease; }
+.folder-item.folder-drop-target { border-color: var(--purple); background: #f7f5ff; }
+.folder-copy { display: flex; align-items: center; gap: 9px; min-width: 180px; }
+.folder-label { display: grid; gap: 4px; }
+.folder-open { width: auto; margin: 0; padding: 0; border: 0; background: transparent; color: #424559; font-size: 12px; font-weight: 700; text-align: left; cursor: pointer; }
+.folder-open:hover, .folder-open:focus-visible { color: var(--purple); }
 .folder-item .folder-actions { display: flex; align-items: center; gap: 8px; }
 .folder-actions .folder-add-files { min-height: 30px; padding: 0 10px; font-size: 10px; }
+.folder-children { display: grid; gap: 8px; width: 100%; padding: 10px 0 0 calc(10px + var(--folder-depth, 0) * 4px); border-top: 1px solid #f0f0f5; }
+.folder-children > .folder-item { background: #fcfbff; }
 .folder-file-picker { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; padding-top: 10px; }
 .folder-file-picker .text-input { min-width: 180px; flex: 1; }
 .folder-file-picker button { min-height: 34px; padding: 0 12px; font-size: 10px; }
 .folder-item strong { color: #424559; font-size: 12px; }
 .folder-item small, .folder-empty { color: #999baa; font-size: 10px; }
 .folder-empty { margin: 4px; }
+.file-folder-browser { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding: 14px; border: 1px solid #eeeef4; border-radius: 9px; background: #fdfdff; }
+.file-folder-browser h2 { width: 100%; margin: 0 0 3px; color: #45485d; font-size: 12px; }
+.file-folder-root, .file-folder-chip { min-height: 34px; padding: 9px 11px; border: 1px dashed #d9d6ed; border-radius: 7px; color: #66697a; font-size: 10px; }
+.file-folder-chip { background: #fff; cursor: default; }
+.file-folder-root.folder-drop-target, .file-folder-chip.folder-drop-target { border-color: var(--purple); background: #f3f0ff; color: var(--purple); }
+.folder-content-panel[hidden] { display: none; }
+.folder-content-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 15px; }
+.folder-content-heading h2 { margin: 0 0 4px; color: #303348; font: 750 16px Manrope, sans-serif; }
+.folder-content-heading p { margin: 0; }
+.folder-child-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.folder-child-chip { min-height: 31px; padding: 0 10px; border: 1px solid #e8e6f3; border-radius: 7px; background: #faf9ff; color: #5e50c7; font-size: 10px; cursor: pointer; }
+.folder-file-row { cursor: pointer; }
+.folder-file-row:hover { background: #fbfaff; }
 .active-links-section { display: grid; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #eeeef4; }
 .active-links-section h2 { margin: 0; color: #33364b; font-size: 14px; }
 .active-links-section p { margin: 4px 0 0; color: #999baa; font-size: 11px; }
@@ -389,6 +408,10 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
     .recent-card, .activity-card, .users-card { padding: 15px 12px 10px; }
     .file-table th, .user-table th { font-size: 7px; }
     .file-table td, .user-table td { padding-right: 7px; padding-left: 7px; font-size: 9px; }
+    #create-folder-form { flex-wrap: wrap; }
+    #create-folder-form input, #create-folder-form select { min-width: 0; flex: 1 1 100%; }
+    .folder-content-heading { align-items: flex-start; flex-direction: column; }
+    .folder-item .folder-actions { flex-wrap: wrap; }
     .file-name { gap: 6px; }
     .file-icon { width: 28px; height: 31px; }
     .activity-list { gap: 13px 7px; }

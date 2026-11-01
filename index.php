@@ -167,6 +167,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                     <div class="page-heading"><div><p class="eyebrow">THƯ VIỆN CỦA BẠN</p><h1 id="files-title">Tệp của tôi</h1><p class="welcome-subtitle">Quản lý và chia sẻ tất cả tệp của bạn.</p></div><button class="primary-button" type="button" data-open-upload><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M5 14v4.25A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14"/></svg>Tải tệp lên</button></div>
                     <section class="content-card full-files-card">
                         <div class="file-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg><input id="file-search" type="search" placeholder="Tìm kiếm tệp..." aria-label="Tìm kiếm tệp"></label><label class="sr-only" for="file-folder-filter">Lọc thư mục</label><select class="filter-button" id="file-folder-filter" aria-label="Lọc thư mục"><option value="all">Tất cả thư mục</option></select><label class="sr-only" for="file-status-filter">Lọc trạng thái chia sẻ</label><select class="filter-button" id="file-status-filter" aria-label="Lọc trạng thái chia sẻ"><option value="all">Tất cả trạng thái</option><option value="public">Công khai</option><option value="private">Riêng tư</option><option value="revoked">Đã thu hồi</option><option value="expired">Đã hết hạn</option><option value="missing">Thiếu trên ổ đĩa</option></select><a class="filter-button report-button" href="api/access_report.php" download>Xuất báo cáo truy cập</a></div>
+                        <section id="file-folder-browser" class="file-folder-browser" aria-label="Thư mục kéo thả"><h2>Kéo tệp vào thư mục để sắp xếp</h2></section>
                         <section class="active-links-section" aria-labelledby="active-links-title"><div><h2 id="active-links-title">Liên kết còn hiệu lực</h2><p>Liên kết công khai chưa hết hạn hoặc đạt giới hạn tải.</p></div><ul id="active-links-list" class="active-links-list"></ul></section>
                         <div class="file-table-wrap"><table class="file-table"><thead><tr><th>TÊN TỆP</th><th>NGÀY TẢI LÊN</th><th>QUYỀN TRUY CẬP</th><th>LƯỢT TẢI</th><th></th></tr></thead><tbody id="all-file-rows"></tbody></table></div>
                     </section>
@@ -214,9 +215,15 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
 
                 <section class="view-panel" id="folders-view" aria-labelledby="folders-title">
                     <div class="page-heading"><div><p class="eyebrow">SẮP XẾP TỆP</p><h1 id="folders-title">Thư mục</h1><p class="welcome-subtitle">Tạo và quản lý thư mục lưu trữ của bạn.</p></div></div>
-                    <section class="content-card folder-manager-card">
-                        <form id="create-folder-form" class="add-user-form"><label class="sr-only" for="folder-name">Tên thư mục</label><input id="folder-name" maxlength="255" placeholder="Tên thư mục mới..." required><button class="primary-button" type="submit">Tạo thư mục</button></form>
+                    <section class="content-card folder-manager-card" id="folder-manager-panel">
+                        <form id="create-folder-form" class="add-user-form"><label class="sr-only" for="folder-name">Tên thư mục</label><input id="folder-name" maxlength="255" placeholder="Tên thư mục mới..." required><label class="sr-only" for="folder-parent">Thư mục cha</label><select class="text-input" id="folder-parent"><option value="">Thư mục gốc</option></select><button class="primary-button" type="submit">Tạo thư mục</button></form>
+                        <div id="folder-root-drop" class="file-folder-root" data-folder-id="root">Thả thư mục vào đây để chuyển về thư mục gốc</div>
                         <div id="folder-list" class="folder-list" aria-live="polite"></div>
+                    </section>
+                    <section class="content-card folder-manager-card folder-content-panel" id="folder-content-panel" hidden>
+                        <div class="folder-content-heading"><button class="secondary-button" id="folder-back-button" type="button">← Danh sách thư mục</button><div><h2 id="opened-folder-name">Thư mục</h2><p id="opened-folder-meta" class="welcome-subtitle"></p></div></div>
+                        <div id="opened-folder-children" class="folder-child-list"></div>
+                        <div class="file-table-wrap"><table class="file-table"><thead><tr><th>TÊN TỆP</th><th>NGÀY TẢI LÊN</th><th>QUYỀN TRUY CẬP</th><th>LƯỢT TẢI</th><th></th></tr></thead><tbody id="folder-file-rows"></tbody></table></div>
                     </section>
                 </section>
 
