@@ -41,7 +41,7 @@ if ($action === 'register') {
     $created = pg_query_params(
         $conn,
         'INSERT INTO users (username, full_name, email, password_hash, storage_limit, storage_quota_bytes)
-         VALUES ($1, $2, $3, $4, $5, $5) RETURNING id, full_name, email',
+         VALUES ($1, $2, $3, $4, $5, $5) RETURNING id, full_name, email, role',
         [$username, $name, $email, password_hash($password, PASSWORD_DEFAULT), FILESHARE_DEFAULT_QUOTA_BYTES]
     );
     if (!$created) {
@@ -61,7 +61,7 @@ if ($action === 'register') {
     }
     $result = pg_query_params(
         $conn,
-        'SELECT id, full_name, email, password_hash FROM users WHERE lower(email) = lower($1)',
+        'SELECT id, full_name, email, password_hash, role FROM users WHERE lower(email) = lower($1)',
         [$email]
     );
     $record = $result ? pg_fetch_assoc($result) : false;
@@ -80,10 +80,12 @@ session_regenerate_id(true);
 $_SESSION['user_id'] = (int) $user['id'];
 $_SESSION['user_name'] = $user['full_name'];
 $_SESSION['user_email'] = $user['email'];
+$_SESSION['user_role'] = $user['role'];
 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 json_response(['user' => [
     'id' => (int) $user['id'],
     'full_name' => $user['full_name'],
     'email' => $user['email'],
+    'role' => $user['role'],
     'csrf_token' => $_SESSION['csrf_token'],
 ]]);

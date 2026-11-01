@@ -22,12 +22,6 @@ if ($expiry !== '') {
 $limitInput = trim((string) ($body['download_limit'] ?? ''));
 $downloadLimit = $limitInput === '' ? null : filter_var($limitInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if ($downloadLimit === false) json_response(['error' => 'Giới hạn lượt tải phải là số nguyên dương.'], 400);
-$password = (string) ($body['password'] ?? '');
-if (strlen($password) > 1024 || ($password !== '' && strlen($password) < 8)) {
-    json_response(['error' => 'Mật khẩu liên kết phải có ít nhất 8 ký tự và tối đa 1024 byte.'], 400);
-}
-$passwordHash = $password === '' ? null : password_hash($password, PASSWORD_DEFAULT);
-$clearPassword = !empty($body['clear_password']);
 $shareCode = bin2hex(random_bytes(16));
 
 $result = pg_query_params(
@@ -36,15 +30,14 @@ $result = pg_query_params(
      SET share_code = $3, is_link_active = TRUE, download_count = 0,
          download_limit = $4,
          expires_at = CASE WHEN $5::date IS NULL THEN NULL ELSE $5::date + INTERVAL \'1 day\' - INTERVAL \'1 second\' END,
-         link_password_hash = CASE WHEN $7 THEN NULL ELSE COALESCE($6, link_password_hash) END,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $1 AND owner_id = $2 AND access_type = \'public\'
-     RETURNING id, share_code, expires_at, download_limit, download_count, (link_password_hash IS NOT NULL) AS has_link_password',
-    [$fileId, $userId, $shareCode, $downloadLimit, $expiry, $passwordHash, $clearPassword ? 'true' : 'false']
+     RETURNING id, share_code, expires_at, download_limit, download_count',
+    [$fileId, $userId, $shareCode, $downloadLimit, $expiry]
 );
 if (!$result) {
     error_log('Failed to create file link: ' . pg_last_error($conn));
-    json_response(['error' => 'Không thể tạo liên kết. Hãy áp dụng migration 002_link_password.sql nếu chưa chạy.'], 500);
+    json_response(['error' => 'Không thể tạo liên kết.'], 500);
 }
 $file = pg_fetch_assoc($result);
 if (!$file) {
@@ -62,6 +55,5 @@ json_response(['file' => [
     'expires_at' => $file['expires_at'],
     'download_limit' => $file['download_limit'] === null ? null : (int) $file['download_limit'],
     'download_count' => (int) $file['download_count'],
-    'has_link_password' => $file['has_link_password'] === 't',
     'is_link_active' => true,
 ]]);
