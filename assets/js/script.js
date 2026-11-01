@@ -5,6 +5,9 @@
     const allFileRows = document.getElementById("all-file-rows");
     const recentFileRows = document.getElementById("recent-file-rows");
     const toast = document.getElementById("toast");
+    const notificationButton = document.querySelector(".notification-button");
+    const notificationDropdown = document.getElementById("notification-dropdown");
+    const notificationList = document.getElementById("notification-list");
     const fileInput = document.getElementById("file-input");
     const fileNameInput = document.getElementById("file-name");
     const selectedFile = document.getElementById("selected-file");
@@ -60,6 +63,9 @@
         document.getElementById("storage-quota").textContent = formatStorage(quota);
         document.getElementById("storage-percent").textContent = `${percent}%`;
         document.getElementById("storage-bar-fill").style.width = `${percent}%`;
+        document.getElementById("stat-file-count").textContent = String(account.file_count);
+        document.getElementById("stat-downloads-today").textContent = String(account.downloads_today);
+        document.getElementById("stat-storage-used").textContent = formatStorage(used);
     };
 
     const loadAccount = async () => {
@@ -194,7 +200,7 @@
             anchor.textContent = file.file_name;
             const meta = document.createElement("small");
             const expiry = file.expires_at ? new Intl.DateTimeFormat("vi-VN").format(new Date(file.expires_at)) : "Không hết hạn";
-            meta.textContent = `${file.download_count} / ${file.download_limit ?? "∞"} lượt · Hết hạn: ${expiry}${file.has_link_password ? " · Có mật khẩu" : ""}`;
+            meta.textContent = `${file.download_count} / ${file.download_limit ?? "∞"} lượt · Hết hạn: ${expiry}`;
             item.append(anchor, meta);
             activeList.append(item);
         });
@@ -313,8 +319,6 @@
             : "Không thời hạn";
         document.getElementById("detail-link-limit").value = file.download_limit ?? "";
         document.getElementById("detail-link-expiry").value = file.expires_at ? file.expires_at.slice(0, 10) : "";
-        document.getElementById("detail-link-password").value = "";
-        document.getElementById("clear-link-password").checked = false;
         document.getElementById("create-link").disabled = !isPublic;
         document.getElementById("create-link").title = isPublic ? "Lưu cài đặt và tạo mã liên kết mới" : "Chỉ tệp công khai mới có thể tạo liên kết tải";
         renderPermissions([]);
@@ -447,7 +451,6 @@
         data.append("access", document.querySelector('input[name="access"]:checked').value);
         data.append("limit", document.getElementById("download-limit").value);
         data.append("expiry", document.getElementById("expiry-date").value);
-        data.append("link_password", document.getElementById("upload-link-password").value);
         data.append("folder_id", document.getElementById("upload-folder").value);
         submitButton.disabled = true;
 
@@ -455,7 +458,11 @@
             const { file } = await apiRequest("api/upload.php", { method: "POST", body: data });
             files.unshift(file);
             renderFiles();
-            if (storageAccount) renderQuota({ ...storageAccount, storage_used_bytes: storageAccount.storage_used_bytes + file.file_size });
+            if (storageAccount) renderQuota({
+                ...storageAccount,
+                storage_used_bytes: storageAccount.storage_used_bytes + file.file_size,
+                file_count: storageAccount.file_count + 1,
+            });
             form.reset();
             selectedUpload = null;
             selectedFile.hidden = true;
@@ -465,6 +472,8 @@
             activateView("files");
             showToast("Đã lưu tệp vào cơ sở dữ liệu.");
             document.dispatchEvent(new CustomEvent("folders:refresh"));
+            loadPersonalActivity();
+            loadNotifications().catch((error) => showToast(error.message));
         } catch (error) {
             showToast(error.message);
         } finally {
@@ -547,25 +556,19 @@
                     file_id: selectedFileId,
                     expiry: document.getElementById("detail-link-expiry").value,
                     download_limit: document.getElementById("detail-link-limit").value,
-                    password: document.getElementById("detail-link-password").value,
-                    clear_password: document.getElementById("clear-link-password").checked,
                 },
             });
             const currentFile = files.find((item) => item.id === selectedFileId);
             Object.assign(currentFile, file);
             const shareUrl = new URL(`download.php?code=${encodeURIComponent(file.share_code)}`, window.location.href).href;
             document.getElementById("share-url").textContent = shareUrl;
-            document.getElementById("share-description").textContent = file.has_link_password
-                ? "Liên kết mới yêu cầu mật khẩu để tải tệp."
-                : "Liên kết mới dùng cài đặt thời hạn và giới hạn tải đã chọn.";
+            document.getElementById("share-description").textContent = "Liên kết mới dùng cài đặt thời hạn và giới hạn tải đã chọn.";
             document.getElementById("link-status-toggle").classList.add("on");
             document.getElementById("link-status-label").textContent = "Liên kết đang hoạt động";
             document.getElementById("link-download-limit").textContent = `0 / ${file.download_limit ?? "Không giới hạn"} lượt tải`;
             document.getElementById("link-expiry").textContent = file.expires_at
                 ? new Intl.DateTimeFormat("vi-VN").format(new Date(file.expires_at))
                 : "Không thời hạn";
-            document.getElementById("detail-link-password").value = "";
-            document.getElementById("clear-link-password").checked = false;
             document.getElementById("revoke-link").hidden = false;
             renderFiles();
             showToast("Đã lưu cài đặt và tạo mã liên kết mới.");
@@ -645,10 +648,123 @@
         showToast("Trung tâm trợ giúp sẽ sớm có mặt.");
     });
 
-    document.querySelectorAll(".search-button, .notification-button, .storage-upgrade, .more-button, .profile-card, .activity-link").forEach((button) => {
+    document.querySelectorAll(".search-button, .storage-upgrade, .more-button, .profile-card").forEach((button) => {
         button.addEventListener("click", () => showToast("Tính năng này sẽ sớm có mặt."));
+    });
+
+    const formatRelativeTime = (dateValue) => {
+        const minutes = Math.max(0, Math.floor((Date.now() - new Date(dateValue).getTime()) / 60000));
+        if (minutes < 1) return "Vừa xong";
+        if (minutes < 60) return `${minutes} phút trước`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} giờ trước`;
+        return `${Math.floor(hours / 24)} ngày trước`;
+    };
+
+    const loadPersonalActivity = async () => {
+        const list = document.getElementById("personal-activity-list");
+        try {
+            const { uploads } = await apiRequest("api/recent_uploads.php");
+            list.replaceChildren();
+            if (uploads.length === 0) {
+                const empty = document.createElement("p");
+                empty.className = "activity-empty";
+                empty.textContent = "Bạn chưa tải tệp nào lên.";
+                list.append(empty);
+                return;
+            }
+            uploads.forEach((upload) => {
+                const item = document.createElement("div");
+                item.className = "activity-item";
+                const avatar = document.createElement("span");
+                avatar.className = "activity-avatar activity-purple";
+                avatar.textContent = "Bạn";
+                const details = document.createElement("div");
+                const title = document.createElement("p");
+                const strong = document.createElement("strong");
+                strong.textContent = "Bạn";
+                title.append(strong, document.createTextNode(" đã tải tệp lên"));
+                const meta = document.createElement("span");
+                meta.textContent = `${upload.file_name} · ${formatRelativeTime(upload.created_at)}`;
+                details.append(title, meta);
+                item.append(avatar, details);
+                list.append(item);
+            });
+        } catch (error) {
+            list.replaceChildren();
+            showToast(error.message);
+        }
+    };
+
+    const setUnreadCount = (count) => {
+        const dot = notificationButton.querySelector("i");
+        dot.hidden = count === 0;
+        const countLabel = document.getElementById("notification-unread-count");
+        countLabel.textContent = count > 0 ? `${count} chưa đọc` : "";
+        notificationButton.setAttribute("aria-label", count > 0 ? `Thông báo, ${count} chưa đọc` : "Thông báo");
+    };
+
+    const renderNotifications = (notifications) => {
+        notificationList.replaceChildren();
+        if (notifications.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "notification-empty";
+            empty.textContent = "Bạn chưa có thông báo nào.";
+            notificationList.append(empty);
+            return;
+        }
+        notifications.forEach((notification) => {
+            const item = document.createElement("article");
+            item.className = `notification-item${notification.is_read ? "" : " unread"}`;
+            const title = document.createElement("strong");
+            title.textContent = notification.title;
+            const message = document.createElement("p");
+            message.textContent = notification.message;
+            const time = document.createElement("small");
+            time.textContent = formatRelativeTime(notification.created_at);
+            item.append(title, message, time);
+            notificationList.append(item);
+        });
+    };
+
+    const loadNotifications = async (markRead = false) => {
+        const { notifications, unread_count: unreadCount } = await apiRequest("api/notifications.php");
+        renderNotifications(notifications);
+        setUnreadCount(unreadCount);
+        if (markRead && unreadCount > 0) {
+            await apiRequest("api/notifications.php", { method: "POST", body: { action: "mark_read" } });
+            setUnreadCount(0);
+            notificationList.querySelectorAll(".notification-item").forEach((item) => item.classList.remove("unread"));
+        }
+    };
+
+    notificationButton.addEventListener("click", async () => {
+        const opening = notificationDropdown.hidden;
+        notificationDropdown.hidden = !opening;
+        notificationButton.setAttribute("aria-expanded", String(opening));
+        if (!opening) return;
+        try {
+            await loadNotifications(true);
+        } catch (error) {
+            showToast(error.message);
+        }
+    });
+    document.addEventListener("click", (event) => {
+        if (!event.target.closest(".notification-menu")) {
+            notificationDropdown.hidden = true;
+            notificationButton.setAttribute("aria-expanded", "false");
+        }
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !notificationDropdown.hidden) {
+            notificationDropdown.hidden = true;
+            notificationButton.setAttribute("aria-expanded", "false");
+            notificationButton.focus();
+        }
     });
 
     loadFiles();
     loadAccount();
+    loadPersonalActivity();
+    loadNotifications().catch((error) => showToast(error.message));
 })();

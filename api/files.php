@@ -15,7 +15,7 @@ $result = pg_query_params(
     $conn,
     'SELECT id, file_name, file_path, file_size, file_type, share_code, access_type,
             folder_id,
-            download_limit, download_count, expires_at, is_link_active, (link_password_hash IS NOT NULL) AS has_link_password, created_at
+            download_limit, download_count, expires_at, is_link_active, created_at
      FROM files
      WHERE owner_id = $1 AND ($2::bigint IS NULL OR folder_id = $2)
      ORDER BY created_at DESC, id DESC',
@@ -46,7 +46,6 @@ while ($file = pg_fetch_assoc($result)) {
         'download_count' => (int) $file['download_count'],
         'expires_at' => $file['expires_at'],
         'is_link_active' => $file['is_link_active'] === 't',
-        'has_link_password' => $file['has_link_password'] === 't',
         'created_at' => $file['created_at'],
     ];
 }

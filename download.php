@@ -8,19 +8,6 @@ function fail_download(string $message, int $status): never
     exit($message);
 }
 
-function password_form(string $code, string $message = ''): never
-{
-    http_response_code($message === '' ? 200 : 403);
-    header('Content-Type: text/html; charset=utf-8');
-    $safeCode = htmlspecialchars($code, ENT_QUOTES, 'UTF-8');
-    $safeMessage = htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
-    echo '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mật khẩu liên kết</title>'
-        . '<main style="max-width:420px;margin:12vh auto;padding:28px;font:16px system-ui;border:1px solid #ddd;border-radius:12px"><h1>Liên kết được bảo vệ</h1>'
-        . ($safeMessage !== '' ? '<p role="alert">' . $safeMessage . '</p>' : '')
-        . '<form method="post"><input type="hidden" name="code" value="' . $safeCode . '"><label for="link-password">Nhập mật khẩu</label><input id="link-password" name="link_password" type="password" required autocomplete="current-password" style="display:block;width:100%;box-sizing:border-box;padding:12px;margin:10px 0 16px"><button type="submit">Tiếp tục tải</button></form></main></html>';
-    exit;
-}
-
 try {
     require_once __DIR__ . '/config/app.php';
     require_once __DIR__ . '/config/database.php';
@@ -36,7 +23,7 @@ if (!is_string($shareCode) || !preg_match('/^[a-f0-9]{32}$/', $shareCode)) fail_
 $result = pg_query_params(
     $conn,
     'SELECT id, owner_id, file_name, file_path, file_type, download_limit, download_count,
-            expires_at, access_type, is_link_active, link_password_hash
+            expires_at, access_type, is_link_active
      FROM files WHERE share_code = $1',
     [$shareCode]
 );
@@ -61,12 +48,6 @@ if ($file['access_type'] === 'private') {
     if (!$authorized) fail_download('Tài khoản này không được cấp quyền tải tệp.', 403);
 } elseif ($file['access_type'] !== 'public') {
     fail_download('Quyền truy cập tệp không hợp lệ.', 403);
-}
-
-if (!empty($file['link_password_hash'])) {
-    $providedPassword = $_SERVER['REQUEST_METHOD'] === 'POST' ? (string) ($_POST['link_password'] ?? '') : '';
-    if ($providedPassword === '') password_form($shareCode);
-    if (!password_verify($providedPassword, $file['link_password_hash'])) password_form($shareCode, 'Mật khẩu không chính xác.');
 }
 
 $storageRoot = realpath(FILESHARE_STORAGE_DIR);

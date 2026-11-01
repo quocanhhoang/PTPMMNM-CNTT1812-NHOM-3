@@ -54,12 +54,6 @@ if ($downloadLimit === false) {
     json_response(['error' => 'Giới hạn lượt tải phải là số nguyên dương.'], 400);
 }
 
-$linkPassword = (string) ($_POST['link_password'] ?? '');
-if (strlen($linkPassword) > 1024 || ($linkPassword !== '' && strlen($linkPassword) < 8)) {
-    json_response(['error' => 'Mật khẩu liên kết phải có ít nhất 8 ký tự và tối đa 1024 byte.'], 400);
-}
-$linkPasswordHash = $linkPassword === '' ? null : password_hash($linkPassword, PASSWORD_DEFAULT);
-
 $expiry = trim((string) ($_POST['expiry'] ?? ''));
 if ($expiry !== '') {
     $expiryDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expiry);
@@ -152,9 +146,9 @@ try {
         $conn,
         'INSERT INTO files
             (owner_id, folder_id, file_name, file_path, file_size, file_type, share_code,
-             access_type, download_limit, download_count, expires_at, is_link_active, link_password_hash)
+             access_type, download_limit, download_count, expires_at, is_link_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0,
-                 ($10::date + INTERVAL \'1 day\' - INTERVAL \'1 second\'), TRUE, $11)
+                 ($10::date + INTERVAL \'1 day\' - INTERVAL \'1 second\'), TRUE)
          RETURNING id, created_at',
         [
             $userId,
@@ -167,7 +161,6 @@ try {
             $accessType,
             $downloadLimit,
             $expiry,
-            $linkPasswordHash,
         ]
     );
     if (!$insertedFile) {
@@ -181,6 +174,15 @@ try {
         [$userId, $savedFile['id'], 'upload']
     );
     if (!$activity) {
+        throw new RuntimeException(pg_last_error($conn));
+    }
+    $notification = pg_query_params(
+        $conn,
+        "INSERT INTO notifications (user_id, type, title, message)
+         VALUES ($1, 'upload', 'Tải tệp lên thành công', $2)",
+        [$userId, 'Tệp "' . $fileName . '" đã được tải lên tài khoản của bạn.']
+    );
+    if (!$notification) {
         throw new RuntimeException(pg_last_error($conn));
     }
 
@@ -210,7 +212,6 @@ json_response([
         'download_count' => 0,
         'expires_at' => $expiry,
         'is_link_active' => true,
-        'has_link_password' => $linkPasswordHash !== null,
         'created_at' => $savedFile['created_at'],
     ],
 ], 201);

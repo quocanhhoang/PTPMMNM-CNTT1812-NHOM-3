@@ -5,6 +5,7 @@ if (empty($_SESSION['user_id'])) {
     exit;
 }
 $currentUserName = (string) ($_SESSION['user_name'] ?? 'Tài khoản');
+$isAdmin = ($_SESSION['user_role'] ?? 'user') === 'admin';
 preg_match('/^./u', $currentUserName, $initialMatch);
 $userInitial = $initialMatch[0] ?? 'U';
 require_once __DIR__ . '/config/app.php';
@@ -60,6 +61,12 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.25 10.85 7.5-4.7m-7.5 7 7.5 4.7"/></svg>
                     <span>Được chia sẻ</span>
                 </button>
+                <?php if ($isAdmin): ?>
+                    <a class="nav-link admin-nav-link" href="admin.php">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M8 15v-4m4 4V7m4 8v-6"/></svg>
+                        <span>Dashboard admin</span>
+                    </a>
+                <?php endif; ?>
             </nav>
 
             <div class="sidebar-bottom">
@@ -84,10 +91,16 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                     <button class="icon-button search-button" type="button" aria-label="Tìm kiếm">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg>
                     </button>
-                    <button class="icon-button notification-button" type="button" aria-label="Thông báo">
+                    <div class="notification-menu">
+                    <button class="icon-button notification-button" type="button" aria-label="Thông báo" aria-expanded="false" aria-controls="notification-dropdown">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
-                        <i></i>
+                        <i hidden></i>
                     </button>
+                    <section class="notification-dropdown" id="notification-dropdown" aria-label="Danh sách thông báo" hidden>
+                        <div class="notification-heading"><strong>Thông báo</strong><span id="notification-unread-count"></span></div>
+                        <div class="notification-list" id="notification-list" aria-live="polite"></div>
+                    </section>
+                    </div>
                     <span class="topbar-divider"></span>
                     <span class="avatar avatar-small"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span>
                     <button class="logout-button" type="button" id="logout-button">Đăng xuất</button>
@@ -110,19 +123,19 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
 
                     <div class="stats-grid">
                         <article class="stat-card">
-                            <div class="stat-top"><span>Tổng người dùng</span><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20m6-9a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-7.5a4 4 0 0 1 0 7.75m2 3.75a3.5 3.5 0 0 1 2 3.5V20"/></svg></span></div>
-                            <div class="stat-value">15</div>
-                            <div class="stat-foot"><span class="trend">↑ 12%</span> so với tháng trước</div>
-                        </article>
-                        <article class="stat-card">
-                            <div class="stat-top"><span>Tổng số tệp</span><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3.5H7.75A2.75 2.75 0 0 0 5 6.25v11.5a2.75 2.75 0 0 0 2.75 2.75h8.5A2.75 2.75 0 0 0 19 17.75V9l-5.5-5.5Z"/><path d="M13 4v5h5"/></svg></span></div>
+                            <div class="stat-top"><span>Tệp đã tải lên</span><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3.5H7.75A2.75 2.75 0 0 0 5 6.25v11.5a2.75 2.75 0 0 0 2.75 2.75h8.5A2.75 2.75 0 0 0 19 17.75V9l-5.5-5.5Z"/><path d="M13 4v5h5"/></svg></span></div>
                             <div class="stat-value" id="stat-file-count">0</div>
-                            <div class="stat-foot"><span class="trend">↑ 8%</span> so với tháng trước</div>
+                            <div class="stat-foot">Trong tài khoản của bạn</div>
                         </article>
                         <article class="stat-card">
                             <div class="stat-top"><span>Lượt tải hôm nay</span><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span></div>
-                            <div class="stat-value">35</div>
-                            <div class="stat-foot"><span class="trend">↑ 5%</span> so với hôm qua</div>
+                            <div class="stat-value" id="stat-downloads-today">0</div>
+                            <div class="stat-foot">Trên các tệp của bạn</div>
+                        </article>
+                        <article class="stat-card">
+                            <div class="stat-top"><span>Dung lượng đã dùng</span><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M8 12h8m-8 4h5"/></svg></span></div>
+                            <div class="stat-value" id="stat-storage-used">0 B</div>
+                            <div class="stat-foot">Dung lượng tệp của bạn</div>
                         </article>
                     </div>
 
@@ -145,32 +158,9 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                         </section>
                         <aside class="content-card activity-card">
                             <div class="section-heading"><div><h2>Hoạt động gần đây</h2><p>Cập nhật mới nhất</p></div><button class="more-button" type="button" aria-label="Xem thêm">···</button></div>
-                            <div class="activity-list">
-                                <div class="activity-item"><span class="activity-avatar activity-blue">NA</span><div><p><strong>Nguyễn An</strong> đã tải tệp</p><span>BaoCao.docx · 12 phút trước</span></div></div>
-                                <div class="activity-item"><span class="activity-avatar activity-orange">ML</span><div><p><strong>Minh Long</strong> đã xem tệp</p><span>DeTai.pdf · 1 giờ trước</span></div></div>
-                                <div class="activity-item"><span class="activity-avatar activity-green">TH</span><div><p><strong>Thu Hà</strong> được cấp quyền</p><span>KeHoach.xlsx · 3 giờ trước</span></div></div>
-                                <div class="activity-item"><span class="activity-avatar activity-purple">BT</span><div><p><strong>Bạn</strong> đã tải tệp mới</p><span>BaoCao.docx · Hôm qua</span></div></div>
-                            </div>
-                            <button class="activity-link" type="button">Xem tất cả hoạt động <span aria-hidden="true">→</span></button>
+                            <div class="activity-list" id="personal-activity-list" aria-live="polite"><p class="activity-empty">Đang tải hoạt động...</p></div>
                         </aside>
                     </div>
-
-                    <section class="content-card users-card">
-                        <div class="section-heading">
-                            <div><h2>Thống kê người dùng</h2><p>Tổng quan hoạt động chia sẻ tệp</p></div>
-                            <button class="filter-button" type="button">Tháng này <span aria-hidden="true">⌄</span></button>
-                        </div>
-                        <div class="file-table-wrap">
-                            <table class="user-table">
-                                <thead><tr><th>NGƯỜI DÙNG</th><th>EMAIL</th><th>SỐ TỆP</th><th>SỐ LƯỢT TẢI</th><th>TRẠNG THÁI</th></tr></thead>
-                                <tbody>
-                                    <tr><td><span class="user-name"><span class="mini-avatar user-a">NA</span><strong>Nguyễn Văn An</strong></span></td><td>nguyenvana@gmail.com</td><td>18 tệp</td><td>142 lượt</td><td><span class="member-status">Hoạt động</span></td></tr>
-                                    <tr><td><span class="user-name"><span class="mini-avatar user-b">ML</span><strong>Minh Long</strong></span></td><td>minhlong@gmail.com</td><td>12 tệp</td><td>96 lượt</td><td><span class="member-status">Hoạt động</span></td></tr>
-                                    <tr><td><span class="user-name"><span class="mini-avatar user-c">TH</span><strong>Thu Hà</strong></span></td><td>thuha@gmail.com</td><td>9 tệp</td><td>74 lượt</td><td><span class="member-status">Hoạt động</span></td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
                 </section>
 
                 <section class="view-panel" id="files-view" aria-labelledby="files-title">
@@ -214,7 +204,6 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                                 <div class="input-suffix"><input class="text-input" id="download-limit" name="limit" type="number" min="1" value="10"><span>lượt</span></div>
                                 <label class="field-label expiry-label" for="expiry-date">Ngày hết hạn</label>
                                 <div class="date-input-wrap"><input class="text-input" id="expiry-date" name="expiry" type="date" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($defaultExpiryDate, ENT_QUOTES, 'UTF-8') ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></div>
-                                <label class="field-label" for="upload-link-password">Mật khẩu liên kết (tùy chọn)</label><input class="text-input" id="upload-link-password" name="link_password" type="password" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự">
                                 <div class="settings-note"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>Liên kết sẽ tự động hết hạn sau ngày đã chọn.</div>
                                 <button class="primary-button save-button" type="submit">Lưu tệp <span aria-hidden="true">→</span></button>
                             </div>
@@ -240,7 +229,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                             <div class="detail-section permission-section"><div class="permission-heading"><div><h3>Người được cấp quyền</h3><p>Những người có quyền truy cập tệp này.</p></div><span class="permission-count" id="permission-count">0 người</span></div><div class="permission-list" id="permission-list"></div><button class="text-button permission-history-toggle" type="button" id="permission-history-toggle">Xem lịch sử cấp quyền</button><div class="permission-history" id="permission-history" hidden></div><form class="add-user-form" id="add-user-form"><label class="sr-only" for="user-email">Địa chỉ email</label><input id="user-email" type="email" placeholder="Nhập địa chỉ email..." required><button class="secondary-button" type="submit"><span aria-hidden="true">+</span> Thêm người dùng</button></form></div>
                             <div class="detail-section file-management-section"><h3>Quản lý tệp</h3><form id="move-file-form"><label class="sr-only" for="move-folder">Chuyển vào thư mục</label><select class="text-input" id="move-folder"><option value="">Không có thư mục</option></select><button class="secondary-button" type="submit">Chuyển thư mục</button></form><button class="danger-button" type="button" id="delete-file">Xóa tệp</button></div>
                         </section>
-                        <aside class="content-card link-settings"><h2>Cài đặt liên kết</h2><div class="link-setting-row"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.72-1.72"/></svg></span><div><strong>Liên kết chia sẻ</strong><small id="link-status-label">Liên kết đang hoạt động</small></div><span class="toggle on" id="link-status-toggle" aria-label="Đang bật"><i></i></span></div><div class="link-setting-row"><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span><div><strong>Giới hạn lượt tải</strong><small id="link-download-limit">—</small></div></div><div class="link-setting-row"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><div><strong>Ngày hết hạn</strong><small id="link-expiry">—</small></div></div><label class="field-label" for="detail-link-limit">Giới hạn lượt tải (để trống = không giới hạn)</label><input class="text-input" id="detail-link-limit" type="number" min="1" placeholder="Không giới hạn"><label class="field-label" for="detail-link-expiry">Ngày hết hạn (để trống = không hết hạn)</label><input class="text-input" id="detail-link-expiry" type="date" min="<?= date('Y-m-d') ?>"><label class="field-label" for="detail-link-password">Mật khẩu mới (để trống = không đặt/không đổi)</label><input class="text-input" id="detail-link-password" type="password" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự"><label class="link-password-clear"><input id="clear-link-password" type="checkbox"> Gỡ mật khẩu hiện tại</label><p class="settings-note">Lưu cài đặt sẽ tạo mã liên kết mới và đặt lại lượt tải về 0.</p><button class="primary-button create-link-button" type="button" id="create-link">Lưu cài đặt và tạo mã mới</button><button class="danger-button" type="button" id="revoke-link">Thu hồi liên kết</button></aside>
+                        <aside class="content-card link-settings"><h2>Cài đặt liên kết</h2><div class="link-setting-row"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.72-1.72"/></svg></span><div><strong>Liên kết chia sẻ</strong><small id="link-status-label">Liên kết đang hoạt động</small></div><span class="toggle on" id="link-status-toggle" aria-label="Đang bật"><i></i></span></div><div class="link-setting-row"><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span><div><strong>Giới hạn lượt tải</strong><small id="link-download-limit">—</small></div></div><div class="link-setting-row"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><div><strong>Ngày hết hạn</strong><small id="link-expiry">—</small></div></div><label class="field-label" for="detail-link-limit">Giới hạn lượt tải (để trống = không giới hạn)</label><input class="text-input" id="detail-link-limit" type="number" min="1" placeholder="Không giới hạn"><label class="field-label" for="detail-link-expiry">Ngày hết hạn (để trống = không hết hạn)</label><input class="text-input" id="detail-link-expiry" type="date" min="<?= date('Y-m-d') ?>"><p class="settings-note">Lưu cài đặt sẽ tạo mã liên kết mới và đặt lại lượt tải về 0.</p><button class="primary-button create-link-button" type="button" id="create-link">Lưu cài đặt và tạo mã mới</button><button class="danger-button" type="button" id="revoke-link">Thu hồi liên kết</button></aside>
                     </div>
                 </section>
                 <footer class="page-footer"><span>© 2026 FileShare</span><span>Chia sẻ tệp dễ dàng và an toàn.</span><a href="#" id="help-link">Trung tâm trợ giúp</a></footer>
