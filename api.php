@@ -93,14 +93,14 @@ try {
             $email = strtolower(trim((string)($input['email'] ?? '')));
             $password = (string)($input['password'] ?? '');
             $name = trim((string)($input['name'] ?? ''));
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
-                app_json(['error' => 'Vui lòng nhập địa chỉ email hợp lệ.'], 422);
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100) {
+                app_json(['error' => 'Vui lòng nhập email hợp lệ, tối đa 100 ký tự.'], 422);
             }
             if (strlen($password) < 10 || strlen($password) > 200) {
                 app_json(['error' => 'Mật khẩu cần có từ 10 đến 200 ký tự.'], 422);
             }
-            if ($name === '' || strlen($name) > 320 || preg_match('//u', $name) !== 1) {
-                app_json(['error' => 'Tên hiển thị không hợp lệ.'], 422);
+            if ($name === '' || preg_match('//u', $name) !== 1 || preg_match_all('/./us', $name) > 100) {
+                app_json(['error' => 'Tên hiển thị không hợp lệ hoặc dài hơn 100 ký tự.'], 422);
             }
             $user = app_register_user($email, $password, $name);
             if ($user === null) {
@@ -109,6 +109,7 @@ try {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['csrf'] = bin2hex(random_bytes(32));
+            $_SESSION['csrf_token'] = $_SESSION['csrf'];
             app_json(['user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']], 'csrf' => $_SESSION['csrf']]);
         }
         if ($action === 'login') {
@@ -142,11 +143,13 @@ try {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['csrf'] = bin2hex(random_bytes(32));
+            $_SESSION['csrf_token'] = $_SESSION['csrf'];
             app_json(['user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']], 'csrf' => $_SESSION['csrf']]);
         }
         unset($_SESSION['user_id']);
         session_regenerate_id(true);
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
+        $_SESSION['csrf_token'] = $_SESSION['csrf'];
         app_json(['ok' => true, 'csrf' => $_SESSION['csrf']]);
     }
 
@@ -472,6 +475,9 @@ try {
     }
 
     app_json(['error' => 'Không tìm thấy chức năng.'], 404);
+} catch (AppDatabaseException $error) {
+    error_log('FileShare PostgreSQL error: ' . $error->getMessage());
+    app_json(['error' => $error->getMessage()], 503);
 } catch (InvalidArgumentException | DomainException $error) {
     app_json(['error' => $error->getMessage()], 422);
 } catch (OutOfBoundsException $error) {

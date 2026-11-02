@@ -42,8 +42,9 @@ function app_session_start(): void
     ]);
     session_start();
     if (!isset($_SESSION['csrf'])) {
-        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+        $_SESSION['csrf'] = $_SESSION['csrf_token'] ?? bin2hex(random_bytes(32));
     }
+    $_SESSION['csrf_token'] = $_SESSION['csrf'];
 }
 
 function app_initial_state(): array
@@ -61,6 +62,24 @@ function app_db_connection(): PgSql\Connection
         throw new RuntimeException('Kết nối PostgreSQL chưa sẵn sàng.');
     }
     return $conn;
+}
+
+function app_database_error_message(string $databaseError, string $fallback): string
+{
+    if (str_contains($databaseError, 'permission denied for table file_permissions')) {
+        return 'DB_USER cần quyền SELECT, INSERT trên public.file_permissions để cấp quyền tải tệp; xem lệnh GRANT trong README.md.';
+    }
+    if (str_contains($databaseError, 'permission denied for sequence file_permissions_id_seq')) {
+        return 'DB_USER cần quyền USAGE trên sequence public.file_permissions_id_seq để cấp quyền tải tệp; xem lệnh GRANT trong README.md.';
+    }
+    if (str_contains($databaseError, 'permission denied for table')
+        || str_contains($databaseError, 'permission denied for sequence')) {
+        return 'Tài khoản PostgreSQL của ứng dụng chưa đủ quyền. Hãy chạy các lệnh cấp quyền trong phần cấu hình database của README.md.';
+    }
+    if (preg_match('/column .* does not exist|relation .* does not exist/', $databaseError) === 1) {
+        return 'Cơ sở dữ liệu chưa có đủ cấu trúc cho chức năng này. Hãy chạy các migration 001_file_link_password.sql, 002_file_cleanup.sql và 003_file_folders.sql theo README.md.';
+    }
+    return $fallback;
 }
 
 function app_with_state(callable $callback): mixed
@@ -118,7 +137,7 @@ function app_user(): ?array
     );
     if ($result === false) {
         error_log('Unable to load authenticated user from PostgreSQL: ' . pg_last_error(app_db_connection()));
-        throw new RuntimeException('Không thể xác minh tài khoản.');
+        throw new AppDatabaseException('PostgreSQL từ chối đọc public.users. Hãy cấp quyền SELECT trên bảng này cho DB_USER.');
     }
     $row = pg_fetch_assoc($result);
     if ($row === false) {
@@ -147,7 +166,7 @@ function app_find_user_by_email(string $email): ?array
     );
     if ($result === false) {
         error_log('Unable to look up login account in PostgreSQL: ' . pg_last_error($connection));
-        throw new RuntimeException('Không thể xác minh tài khoản.');
+        throw new AppDatabaseException('PostgreSQL từ chối đọc public.users. Hãy cấp quyền SELECT trên bảng này cho DB_USER.');
     }
     $row = pg_fetch_assoc($result);
     if ($row === false) {
@@ -173,7 +192,7 @@ function app_register_user(string $email, string $password, string $name): ?arra
 
     if (!pg_query($connection, 'BEGIN')) {
         error_log('Unable to begin PostgreSQL registration transaction: ' . pg_last_error($connection));
-        throw new RuntimeException('Không thể tạo tài khoản lúc này.');
+        throw new AppDatabaseException('Không thể bắt đầu giao dịch đăng ký trong PostgreSQL.');
     }
     try {
         $result = pg_query_params(
@@ -186,7 +205,7 @@ function app_register_user(string $email, string $password, string $name): ?arra
         );
         if ($result === false) {
             error_log('Unable to register PostgreSQL user: ' . pg_last_error($connection));
-            throw new RuntimeException('Không thể lưu tài khoản vào PostgreSQL.');
+            throw new AppDatabaseException('PostgreSQL từ chối tạo tài khoản. Hãy cấp quyền SELECT, INSERT trên public.users và USAGE trên public.users_id_seq cho DB_USER.');
         }
         $row = pg_fetch_assoc($result);
         if ($row === false) {
@@ -201,6 +220,17 @@ function app_register_user(string $email, string $password, string $name): ?arra
             'password_hash' => $row['password_hash'],
             'quota' => (int)$row['storage_limit'],
         ];
+        $folderResult = pg_query_params(
+            $connection,
+            'INSERT INTO public.folders (owner_id, name)
+             VALUES ($1, $2)
+             ON CONFLICT (owner_id, name) DO NOTHING',
+            [$user['id'], 'Tệp của tôi']
+        );
+        if ($folderResult === false) {
+            error_log('Unable to create default PostgreSQL folder: ' . pg_last_error($connection));
+            throw new AppDatabaseException('Không thể tạo thư mục mặc định. Hãy chạy migration 003_file_folders.sql và cấp quyền SELECT, INSERT trên public.folders cùng USAGE trên public.folders_id_seq cho DB_USER.');
+        }
         app_with_state(static function (array &$state) use ($user): void {
             $state['folders'][] = [
                 'id' => bin2hex(random_bytes(12)),
@@ -210,7 +240,8 @@ function app_register_user(string $email, string $password, string $name): ?arra
             ];
         });
         if (!pg_query($connection, 'COMMIT')) {
-            throw new RuntimeException('Không thể hoàn tất đăng ký trong PostgreSQL.');
+            error_log('Unable to commit PostgreSQL registration transaction: ' . pg_last_error($connection));
+            throw new AppDatabaseException('Không thể hoàn tất đăng ký trong PostgreSQL.');
         }
         return $user;
     } catch (Throwable $error) {
@@ -376,7 +407,11 @@ function app_base_url(): string
     if (!preg_match('/\A[a-zA-Z0-9.-]+(?::[0-9]{1,5})?\z/', $host)) {
         throw new RuntimeException('Tên máy chủ yêu cầu không hợp lệ.');
     }
-    $path = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
+    $scriptPath = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/');
+    $path = dirname($scriptPath);
+    if (basename($path) === 'api') {
+        $path = dirname($path);
+    }
     return $scheme . '://' . $host . rtrim($path, '/');
 }
 

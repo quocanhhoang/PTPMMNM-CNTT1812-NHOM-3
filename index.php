@@ -2,7 +2,7 @@
 require_once __DIR__ . '/lib.php';
 app_session_start();
 if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    $_SESSION['csrf_token'] = $_SESSION['csrf'];
 }
 $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->format('Y-m-d');
 ?>
@@ -173,12 +173,12 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
 
                     <section class="content-card users-card">
                         <div class="section-heading">
-                            <div><h2>Lịch sử truy cập</h2><p>Hoạt động tải lên, cấp quyền, thu hồi và tải xuống.</p></div>
+                        <div><h2>Lịch sử truy cập</h2><p>Hoạt động tải lên, cấp quyền, thu hồi và tải xuống. IP chưa được lưu trong cơ sở dữ liệu.</p></div>
                             <button class="secondary-button" id="export-dashboard-report" type="button">Xuất CSV</button>
                         </div>
                         <div class="file-table-wrap">
                             <table class="user-table">
-                                <thead><tr><th>THỜI GIAN UTC</th><th>SỰ KIỆN</th><th>TỆP</th><th>ĐỊA CHỈ IP</th><th>CHI TIẾT</th></tr></thead>
+                                <thead><tr><th>THỜI GIAN</th><th>SỰ KIỆN</th><th>TỆP</th><th>ĐỊA CHỈ IP</th><th>CHI TIẾT</th></tr></thead>
                                 <tbody id="audit-rows"></tbody>
                             </table>
                         </div>
@@ -188,7 +188,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                 <section class="view-panel" id="files-view" aria-labelledby="files-title">
                     <div class="page-heading"><div><p class="eyebrow">THƯ VIỆN CỦA BẠN</p><h1 id="files-title">Tệp của tôi</h1><p class="welcome-subtitle">Quản lý và chia sẻ tất cả tệp của bạn.</p></div><button class="primary-button" type="button" data-open-upload><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M5 14v4.25A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14"/></svg>Tải tệp lên</button></div>
                     <section class="content-card full-files-card">
-                        <div class="file-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg><input id="file-search" type="search" placeholder="Tìm kiếm tệp..." aria-label="Tìm kiếm tệp"></label><select class="filter-button" id="share-filter" aria-label="Lọc trạng thái chia sẻ"><option value="all">Tất cả trạng thái</option><option value="active">Đang chia sẻ</option><option value="private">Riêng tư</option><option value="expired">Hết hạn / đã thu hồi</option></select><select class="filter-button" id="folder-filter" aria-label="Lọc theo thư mục"><option value="all">Tất cả thư mục</option></select><button class="secondary-button" id="create-folder" type="button">+ Thư mục</button><button class="secondary-button" id="export-report" type="button">Xuất báo cáo</button></div>
+                        <div class="file-toolbar"><label class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg><input id="file-search" type="search" placeholder="Tìm kiếm tệp..." aria-label="Tìm kiếm tệp"></label><select class="filter-button" id="share-filter" aria-label="Lọc trạng thái chia sẻ"><option value="all">Tất cả trạng thái</option><option value="active">Đang chia sẻ</option><option value="private">Riêng tư</option><option value="expired">Hết hạn / đã thu hồi</option><option value="none">Chưa chia sẻ</option></select><select class="filter-button" id="folder-filter" aria-label="Lọc theo thư mục"><option value="all">Tất cả thư mục</option></select><button class="secondary-button" id="create-folder" type="button">+ Thư mục</button><button class="secondary-button" id="export-report" type="button">Xuất báo cáo</button></div>
                         <div class="file-table-wrap"><table class="file-table"><thead><tr><th>TÊN TỆP</th><th>NGÀY TẢI LÊN</th><th>QUYỀN TRUY CẬP</th><th>LƯỢT TẢI</th><th></th></tr></thead><tbody id="all-file-rows"></tbody></table></div>
                     </section>
                 </section>
@@ -242,7 +242,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                         <section class="content-card details-card">
                             <div class="detail-file-heading"><span class="file-icon word" id="detail-file-icon"><span>F</span></span><div><h2 id="detail-file-name">Chưa chọn tệp</h2><p id="detail-file-meta">Chọn một tệp để xem chi tiết.</p></div><span class="access-badge private" id="detail-access"><i></i>Chưa chia sẻ</span></div>
                             <div class="detail-section"><h3>Liên kết chia sẻ</h3><p id="share-description">Chọn một liên kết bên dưới để xem chi tiết.</p><div class="share-link"><span id="share-url">Chưa chọn liên kết</span><button type="button" id="copy-link" class="copy-button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>Sao chép</button></div></div>
-                            <div class="detail-section permission-section"><h3>Lịch sử cấp quyền</h3><p>Liên kết đã cấp và thu hồi được lưu trong lịch sử truy cập.</p></div>
+                            <div class="detail-section permission-section"><h3>Lịch sử cấp quyền</h3><p>Những tài khoản được cấp quyền tải tệp này.</p><form class="permission-grant-form" id="permission-grant-form"><label class="field-label" for="permission-email">Email tài khoản</label><div class="permission-grant-controls"><input class="text-input" id="permission-email" name="email" type="email" maxlength="100" autocomplete="email" placeholder="user@example.com" required><button class="secondary-button" id="permission-grant-submit" type="submit" disabled>Cấp quyền tải</button></div></form><ul class="permission-history" id="permission-history" aria-live="polite"><li>Chọn tệp để xem lịch sử cấp quyền.</li></ul></div>
                         </section>
                         <aside class="content-card link-settings"><h2>Cài đặt liên kết</h2><div class="link-setting-row"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.72-1.72"/></svg></span><div><strong>Liên kết đang hoạt động</strong><small>Chưa tạo liên kết</small></div><span class="toggle" aria-label="Đang tắt"><i></i></span></div><div class="link-setting-row"><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span><div><strong>Giới hạn lượt tải</strong><small>—</small></div></div><div class="link-setting-row"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><div><strong>Ngày hết hạn</strong><small>—</small></div></div><button class="danger-button" type="button" id="revoke-link" disabled>Thu hồi liên kết</button></aside>
                     </div>

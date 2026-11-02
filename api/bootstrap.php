@@ -22,7 +22,7 @@ function require_method(string $method): void
 function require_csrf_token(): void
 {
     $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-    $sessionToken = $_SESSION['csrf_token'] ?? '';
+    $sessionToken = $_SESSION['csrf'] ?? $_SESSION['csrf_token'] ?? '';
 
     if (!is_string($token) || !is_string($sessionToken) || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
         json_response(['error' => 'Phiên làm việc không hợp lệ. Vui lòng tải lại trang.'], 403);

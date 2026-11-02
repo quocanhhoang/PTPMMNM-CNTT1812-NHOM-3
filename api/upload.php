@@ -41,15 +41,50 @@ if (!in_array($accessType, ['public', 'private'], true)) {
     json_response(['error' => 'Quyền truy cập không hợp lệ.'], 400);
 }
 
-$downloadLimit = filter_var($_POST['limit'] ?? null, FILTER_VALIDATE_INT, [
+$folderId = filter_var($_POST['folder_id'] ?? null, FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
-if ($downloadLimit === false) {
-    json_response(['error' => 'Giới hạn lượt tải phải là số nguyên dương.'], 400);
+if ($folderId === false) {
+    json_response(['error' => 'Vui lòng chọn thư mục lưu tệp.'], 422);
+}
+$ownedFolder = pg_query_params(
+    $conn,
+    'SELECT id FROM public.folders WHERE id = $1 AND owner_id = $2',
+    [$folderId, FILESHARE_CURRENT_USER_ID]
+);
+if ($ownedFolder === false) {
+    error_log('Failed to verify upload folder ownership: ' . pg_last_error($conn));
+    json_response(['error' => 'Không thể xác minh thư mục lưu.'], 500);
+}
+if (pg_num_rows($ownedFolder) === 0) {
+    json_response(['error' => 'Thư mục không tồn tại hoặc không thuộc tài khoản của bạn.'], 422);
 }
 
+$downloadLimitInput = trim((string)($_POST['limit'] ?? ''));
+$downloadLimit = null;
+if ($downloadLimitInput !== '') {
+    $downloadLimit = filter_var($downloadLimitInput, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1, 'max_range' => 1000000],
+    ]);
+    if ($downloadLimit === false) {
+        json_response(['error' => 'Giới hạn lượt tải phải từ 1 đến 1.000.000 lượt hoặc để trống.'], 400);
+    }
+}
+
+$expiryDays = filter_var($_POST['expiry_days'] ?? null, FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1, 'max_range' => 3650],
+]);
+$linkPassword = (string)($_POST['password'] ?? '');
+if (isset($_POST['expiry_days']) && $expiryDays === false) {
+    json_response(['error' => 'Thời hạn liên kết phải từ 1 đến 3650 ngày.'], 400);
+}
+if (strlen($linkPassword) > 200) {
+    json_response(['error' => 'Mật khẩu liên kết không được vượt quá 200 byte.'], 400);
+}
 $expiry = trim((string) ($_POST['expiry'] ?? ''));
-if ($expiry !== '') {
+if ($expiryDays !== false) {
+    $expiry = (new DateTimeImmutable('today'))->modify('+' . $expiryDays . ' days')->format('Y-m-d');
+} elseif ($expiry !== '') {
     $expiryDate = DateTimeImmutable::createFromFormat('!Y-m-d', $expiry);
     if (!$expiryDate || $expiryDate->format('Y-m-d') !== $expiry) {
         json_response(['error' => 'Ngày hết hạn không hợp lệ.'], 400);
@@ -65,14 +100,35 @@ if (!is_uploaded_file($upload['tmp_name'])) {
     json_response(['error' => 'Tệp tải lên không hợp lệ.'], 400);
 }
 
-if (!is_dir(FILESHARE_STORAGE_DIR) && !mkdir(FILESHARE_STORAGE_DIR, 0750, true) && !is_dir(FILESHARE_STORAGE_DIR)) {
-    error_log('Unable to create file storage directory.');
-    json_response(['error' => 'Không thể chuẩn bị nơi lưu trữ tệp.'], 500);
-}
-
 $storedName = bin2hex(random_bytes(24));
-$absolutePath = FILESHARE_STORAGE_DIR . '/' . $storedName;
-$relativePath = $storedName;
+$relativePath = FILESHARE_CURRENT_USER_ID . '/' . $folderId . '/' . $storedName;
+$storageRoot = realpath(FILESHARE_STORAGE_DIR);
+$ownerFolderPath = FILESHARE_STORAGE_DIR . '/' . FILESHARE_CURRENT_USER_ID;
+$folderPath = $ownerFolderPath . '/' . $folderId;
+if ($storageRoot === false) {
+    error_log('Private storage root is unavailable.');
+    json_response(['error' => 'Thư mục lưu trữ chưa sẵn sàng.'], 500);
+}
+if (!is_dir($ownerFolderPath) && !mkdir($ownerFolderPath, 0700) && !is_dir($ownerFolderPath)) {
+    error_log('Unable to create private account storage folder.');
+    json_response(['error' => 'Không thể tạo thư mục lưu trữ tài khoản. Kiểm tra quyền ghi của PHP với FILESHARE_STORAGE_DIR.'], 500);
+}
+if (!is_dir($folderPath) && !mkdir($folderPath, 0700, true) && !is_dir($folderPath)) {
+    error_log('Unable to create private upload folder.');
+    json_response(['error' => 'Không thể tạo thư mục lưu tệp trên ổ đĩa. Kiểm tra quyền ghi của PHP với FILESHARE_STORAGE_DIR.'], 500);
+}
+if (
+    realpath($ownerFolderPath) !== $ownerFolderPath
+    || !str_starts_with((string)realpath($ownerFolderPath), $storageRoot . DIRECTORY_SEPARATOR)
+    || realpath($folderPath) !== $folderPath
+    || !str_starts_with((string)realpath($folderPath), $storageRoot . DIRECTORY_SEPARATOR)
+    || !chmod($ownerFolderPath, 0700)
+    || !chmod($folderPath, 0700)
+) {
+    error_log('Unable to restrict access to private upload folder.');
+    json_response(['error' => 'Không thể bảo vệ thư mục lưu tệp.'], 500);
+}
+$absolutePath = $folderPath . '/' . $storedName;
 $fileInfo = new finfo(FILEINFO_MIME_TYPE);
 $mimeType = $fileInfo->file($upload['tmp_name']) ?: 'application/octet-stream';
 
@@ -80,8 +136,14 @@ if (!move_uploaded_file($upload['tmp_name'], $absolutePath)) {
     error_log('Unable to move uploaded file into private storage.');
     json_response(['error' => 'Không thể lưu tệp tải lên.'], 500);
 }
+if (!chmod($absolutePath, 0600)) {
+    unlink($absolutePath);
+    error_log('Unable to restrict access to uploaded file.');
+    json_response(['error' => 'Không thể bảo vệ tệp đã tải lên.'], 500);
+}
 
 $shareCode = bin2hex(random_bytes(16));
+$passwordHash = $linkPassword === '' ? null : password_hash($linkPassword, PASSWORD_DEFAULT);
 $transactionStarted = pg_query($conn, 'BEGIN');
 if (!$transactionStarted) {
     unlink($absolutePath);
@@ -93,13 +155,15 @@ try {
     $insertedFile = pg_query_params(
         $conn,
         'INSERT INTO files
-            (owner_id, file_name, file_path, file_size, file_type, share_code,
-             access_type, download_limit, download_count, expires_at, is_link_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0,
-                 ($9::date + INTERVAL \'1 day\' - INTERVAL \'1 second\'), TRUE)
+            (owner_id, folder_id, file_name, file_path, file_size, file_type, share_code,
+             access_type, download_limit, download_count, expires_at, is_link_active,
+             link_password_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0,
+                 ($10::date + INTERVAL \'1 day\' - INTERVAL \'1 second\'), TRUE, $11)
          RETURNING id, created_at',
         [
             FILESHARE_CURRENT_USER_ID,
+            $folderId,
             $fileName,
             $relativePath,
             $fileSize,
@@ -108,6 +172,7 @@ try {
             $accessType,
             $downloadLimit,
             $expiry,
+            $passwordHash,
         ]
     );
     if (!$insertedFile) {
@@ -148,6 +213,8 @@ json_response([
         'download_count' => 0,
         'expires_at' => $expiry,
         'is_link_active' => true,
+        'password_protected' => $passwordHash !== null,
         'created_at' => $savedFile['created_at'],
+        'folder_id' => (string)$folderId,
     ],
 ], 201);

@@ -35,6 +35,7 @@
     let folders = [];
     let links = [];
     let audit = [];
+    const notifiedMissingFileIds = new Set();
 
     const showToast = (message) => {
         toast.textContent = message;
@@ -43,13 +44,13 @@
         toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 3200);
     };
 
-    const request = async (action, { method = "GET", body, formData = false } = {}) => {
+    const requestPath = async (path, { method = "GET", body, formData = false } = {}) => {
         const headers = {};
         if (method !== "GET") {
             headers["X-CSRF-Token"] = csrfToken;
             if (body && !formData) headers["Content-Type"] = "application/json";
         }
-        const response = await fetch(`api.php?action=${encodeURIComponent(action)}`, {
+        const response = await fetch(path, {
             method,
             credentials: "same-origin",
             headers,
@@ -60,7 +61,7 @@
             const result = await response.json().catch(() => null);
             if (result?.error) message = result.error;
             else if (response.status === 401) message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
-            if (response.status === 401 && action !== "login" && action !== "register") {
+            if (response.status === 401 && !path.includes("action=login") && !path.includes("action=register")) {
                 authOverlay.hidden = false;
                 const sessionResponse = await fetch("api.php?action=session", { credentials: "same-origin" });
                 if (sessionResponse.ok) {
@@ -72,6 +73,7 @@
         }
         return response;
     };
+    const request = (action, options) => requestPath(`api.php?action=${encodeURIComponent(action)}`, options);
 
     const applyTheme = (theme) => {
         const isDark = theme === "dark";
@@ -140,25 +142,37 @@
 
     const makeFileRow = (file) => {
         const row = document.createElement("tr");
-        const relatedLinks = fileLinks(file.id);
         const publicLink = activeLink(file.id);
-        const privateLink = relatedLinks.some((link) => link.access === "private" && link.status === "active");
-        const hasActiveLink = relatedLinks.some((link) => link.status === "active");
-        const access = publicLink ? "public" : (privateLink ? "private" : "private");
+        const access = file.access_type === "public" && publicLink ? "public" : "private";
+        const shareStatus = !file.share_code
+            ? "none"
+            : file.link_status === "active"
+                ? "active"
+                : file.link_status === "private"
+                    ? "private"
+                    : "expired";
         const [iconType, iconLetter] = getIconType(file.name);
         row.className = "file-row";
         row.dataset.fileId = file.id;
         row.dataset.filename = file.name;
         row.dataset.folderId = file.folder_id;
         row.dataset.access = access;
-        row.dataset.shared = hasActiveLink ? "active" : (relatedLinks.length ? "expired" : "none");
+        row.dataset.shared = shareStatus;
         if (publicLink) row.dataset.shareLink = publicLink.url;
         row.innerHTML = `<td><span class="file-name"><span class="file-icon ${iconType}"><span></span></span><span><strong></strong><small></small></span></span></td><td></td><td><span class="access-badge ${access}"><i></i></span></td><td></td><td><button class="row-menu" type="button" aria-label="Xóa tệp" title="Xóa tệp">×</button></td>`;
         $(".file-icon span", row).textContent = iconLetter;
         $(".file-name strong", row).textContent = file.name;
         $(".file-name small", row).textContent = file.missing ? "Tệp bị thiếu trên ổ đĩa" : `${formatSize(file.size)} · ${file.folder_name}`;
         row.cells[1].textContent = formatDate(file.created_at);
-        $(".access-badge", row).lastChild.textContent = file.missing ? "Thiếu tệp" : publicLink ? "Đang chia sẻ" : privateLink ? "Riêng tư" : "Chưa chia sẻ";
+        $(".access-badge", row).lastChild.textContent = file.missing
+            ? "Thiếu tệp"
+            : shareStatus === "active"
+                ? "Đang chia sẻ"
+                : shareStatus === "private"
+                    ? "Riêng tư"
+                    : shareStatus === "expired"
+                        ? "Hết hạn / đã thu hồi"
+                        : "Chưa chia sẻ";
         row.cells[3].textContent = `${file.downloads} lượt`;
         if (file.missing) row.classList.add("file-missing");
         return row;
@@ -168,18 +182,29 @@
         const query = $("#file-search").value.trim().toLocaleLowerCase("vi");
         const shareFilter = $("#share-filter").value;
         const folderFilter = $("#folder-filter").value;
+        allRows.querySelector("[data-empty]")?.remove();
+        let visibleCount = 0;
         $$(".file-row", allRows).forEach((row) => {
             const file = files.find((entry) => entry.id === row.dataset.fileId);
-            const relatedLinks = file ? fileLinks(file.id) : [];
-            const privateActive = relatedLinks.some((link) => link.access === "private" && link.status === "active");
             const statusMatches = shareFilter === "all"
                 || (shareFilter === "active" && row.dataset.shared === "active")
-                || (shareFilter === "private" && privateActive)
-                || (shareFilter === "expired" && row.dataset.shared === "expired");
-            row.hidden = !row.dataset.filename.toLocaleLowerCase("vi").includes(query)
+                || (shareFilter === "private" && row.dataset.shared === "private")
+                || (shareFilter === "expired" && row.dataset.shared === "expired")
+                || (shareFilter === "none" && row.dataset.shared === "none");
+            row.hidden = !`${row.dataset.filename} ${file?.folder_name || ""}`.toLocaleLowerCase("vi").includes(query)
                 || (folderFilter !== "all" && row.dataset.folderId !== folderFilter)
                 || !statusMatches;
+            if (!row.hidden) visibleCount++;
         });
+        if (visibleCount === 0) {
+            const row = document.createElement("tr");
+            row.dataset.empty = "true";
+            const cell = document.createElement("td");
+            cell.colSpan = 5;
+            cell.textContent = files.length ? "Không tìm thấy tệp phù hợp." : "Bạn chưa tải tệp nào lên.";
+            row.append(cell);
+            allRows.append(row);
+        }
     };
 
     const renderFiles = () => {
@@ -196,6 +221,14 @@
         const uploadFolder = $("#folder-select");
         filter.replaceChildren(new Option("Tất cả thư mục", "all"));
         uploadFolder.replaceChildren();
+        if (folders.length === 0) {
+            uploadFolder.add(new Option("Chưa có thư mục — hãy tạo thư mục trước", ""));
+            uploadFolder.disabled = true;
+            $("#upload-form button[type='submit']").disabled = true;
+            return;
+        }
+        uploadFolder.disabled = false;
+        $("#upload-form button[type='submit']").disabled = false;
         folders.forEach((folder) => {
             filter.add(new Option(folder.name, folder.id));
             uploadFolder.add(new Option(folder.name, folder.id));
@@ -207,26 +240,37 @@
         expired: "Hết hạn",
         revoked: "Đã thu hồi",
         limit_reached: "Hết lượt tải",
+        private: "Riêng tư",
     })[status] || "Không khả dụng";
 
     const renderLinks = () => {
         const linkRows = $("#link-rows");
         linkRows.replaceChildren();
-        links.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)).forEach((link) => {
+        links.filter((link) => link.status === "active")
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))
+            .forEach((link) => {
             const file = files.find((entry) => entry.id === link.file_id);
             const row = document.createElement("tr");
             row.dataset.linkId = link.id;
-            row.innerHTML = `<td></td><td><span class="access-badge ${link.status === "active" ? "public" : "private"}"><i></i></span></td><td></td><td></td><td></td><td><button class="row-menu revoke-link-row" type="button">Thu hồi</button></td>`;
-            row.cells[0].textContent = file?.name || "Tệp đã xóa";
+            row.innerHTML = `<td><strong class="link-file-name"></strong><a class="link-open" target="_blank" rel="noopener noreferrer"></a></td><td><span class="access-badge public"><i></i></span></td><td></td><td></td><td></td><td><button class="row-menu copy-link-row" type="button">Sao chép</button><button class="row-menu revoke-link-row" type="button">Thu hồi</button></td>`;
+            $(".link-file-name", row).textContent = file?.name || "Tệp đã xóa";
+            const openLink = $(".link-open", row);
+            openLink.href = link.url;
+            openLink.textContent = link.url;
             $(".access-badge", row).lastChild.textContent = linkStatusLabel(link.status);
-            row.cells[1].classList.toggle("link-status-active", link.status === "active");
             row.cells[2].textContent = link.max_downloads === null ? `${link.downloads} lượt · không giới hạn` : `${link.downloads} / ${link.max_downloads}`;
             row.cells[3].textContent = formatDate(link.expires_at);
             row.cells[4].textContent = link.password_protected ? "Có" : "Không";
-            const revokeButton = $(".revoke-link-row", row);
-            revokeButton.disabled = link.status !== "active";
             linkRows.append(row);
         });
+        if (linkRows.childElementCount === 0) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 6;
+            cell.textContent = "Bạn chưa có liên kết nào còn hiệu lực.";
+            row.append(cell);
+            linkRows.append(row);
+        }
     };
 
     const updateStorage = (used, quota) => {
@@ -257,15 +301,17 @@
             link_created: "Cấp liên kết",
             link_revoked: "Thu hồi liên kết",
             file_uploaded: "Tải tệp lên",
+            upload: "Tải tệp lên",
+            permission_granted: "Cấp quyền",
             file_deleted: "Xóa tệp",
             file_cleanup: "Dọn tệp hết hạn",
         };
         audit.slice(0, 12).forEach((event, index) => {
             const file = files.find((entry) => entry.id === event.file_id);
             const eventName = eventLabels[event.event] || event.event;
-            const fileName = file?.name || event.details?.name || "—";
+            const fileName = file?.name || event.file_name || event.details?.name || "—";
             const row = document.createElement("tr");
-            [formatDate(event.created_at), eventName, fileName, event.ip, JSON.stringify(event.details || {})].forEach((value) => {
+            [formatDate(event.created_at), eventName, fileName, event.ip || "Không ghi nhận", Object.keys(event.details || {}).length ? JSON.stringify(event.details) : "—"].forEach((value) => {
                 const cell = document.createElement("td");
                 cell.textContent = value;
                 row.append(cell);
@@ -281,7 +327,7 @@
             }
         });
         audit.slice(0, 12).forEach((event, index) => {
-            if (!["download", "file_missing", "link_created", "link_revoked", "file_uploaded"].includes(event.event)) return;
+            if (!["download", "file_missing", "link_created", "link_revoked", "file_uploaded", "upload", "permission_granted"].includes(event.event)) return;
             const file = files.find((entry) => entry.id === event.file_id);
             const labels = {
                 download: "Có lượt tải tệp",
@@ -289,6 +335,8 @@
                 link_created: "Đã tạo liên kết chia sẻ",
                 link_revoked: "Đã thu hồi liên kết",
                 file_uploaded: "Đã tải tệp lên",
+                upload: "Đã tải tệp lên",
+                permission_granted: "Đã cấp quyền tải",
             };
             notifications.push({
                 title: labels[event.event],
@@ -301,22 +349,64 @@
     };
 
     const loadData = async () => {
-        const response = await request("list");
-        const data = await response.json();
-        files = data.files;
-        folders = data.folders;
-        links = data.links;
-        audit = data.audit;
+        const [databaseResponse, folderResponse] = await Promise.all([
+            requestPath("api/files.php"),
+            requestPath("api/folders.php"),
+        ]);
+        const databaseFiles = await databaseResponse.json();
+        const folderData = await folderResponse.json();
+        const auditResponse = await requestPath("api/audit.php");
+        const auditData = await auditResponse.json();
+        folders = folderData.folders;
+        audit = auditData.events;
+        files = databaseFiles.files.map((file) => ({
+            id: String(file.id),
+            name: file.file_name,
+            size: file.file_size,
+            mime: file.file_type,
+            created_at: file.created_at,
+            downloads: file.download_count,
+            folder_id: file.folder_id,
+            folder_name: file.folder_name,
+            missing: file.missing,
+            share_code: file.share_code,
+            access_type: file.access_type,
+            link_status: file.link_status,
+        }));
+        const newlyMissingFiles = files.filter((file) => file.missing && !notifiedMissingFileIds.has(file.id));
+        files.forEach((file) => {
+            if (file.missing) notifiedMissingFileIds.add(file.id);
+            else notifiedMissingFileIds.delete(file.id);
+        });
+        if (newlyMissingFiles.length) {
+            const names = newlyMissingFiles.slice(0, 3).map((file) => `“${file.name}”`).join(", ");
+            const additionalCount = newlyMissingFiles.length - 3;
+            showToast(`Không tìm thấy ${names}${additionalCount > 0 ? ` và ${additionalCount} tệp khác` : ""} trên ổ đĩa. Liên kết tải sẽ không hoạt động.`);
+        }
+        links = databaseFiles.files
+            .filter((file) => file.share_code)
+            .map((file) => ({
+                id: String(file.id),
+                file_id: String(file.id),
+                url: file.download_url,
+                access: file.access_type,
+                max_downloads: file.download_limit,
+                downloads: file.download_count,
+                expires_at: file.expires_at,
+                status: file.link_status,
+                password_protected: file.password_protected,
+                created_at: file.created_at,
+            }));
         renderFolders();
         renderFiles();
         renderLinks();
-        updateStorage(data.used, data.quota);
+        const used = databaseFiles.files.reduce((total, file) => total + (file.missing ? 0 : file.file_size), 0);
+        updateStorage(used, databaseFiles.quota);
         $("#stat-files").textContent = String(files.length);
         $("#stat-links").textContent = String(links.filter((link) => link.status === "active").length);
         $("#stat-downloads").textContent = String(files.reduce((total, file) => total + file.downloads, 0));
         $("#hero-links-count").textContent = `${links.filter((link) => link.status === "active").length} liên kết`;
         buildNotifications();
-        data.notifications.forEach(showToast);
     };
 
     const renderNotifications = () => {
@@ -406,6 +496,41 @@
         $("#welcome-title").firstChild.textContent = `Xin chào, ${user.name} `;
     };
 
+    const loadPermissionHistory = async (fileId) => {
+        const history = $("#permission-history");
+        history.replaceChildren();
+        const loading = document.createElement("li");
+        loading.textContent = "Đang tải lịch sử cấp quyền…";
+        history.append(loading);
+        try {
+            const response = await requestPath(`api/permissions.php?file_id=${encodeURIComponent(fileId)}`);
+            const data = await response.json();
+            if (activeFileId !== fileId) return;
+            history.replaceChildren();
+            if (data.permissions.length === 0) {
+                const empty = document.createElement("li");
+                empty.textContent = "Chưa cấp quyền tải tệp này cho tài khoản nào.";
+                history.append(empty);
+                return;
+            }
+            data.permissions.forEach((permission) => {
+                const item = document.createElement("li");
+                const recipient = document.createElement("strong");
+                recipient.textContent = permission.full_name;
+                const details = document.createElement("small");
+                details.textContent = `${permission.email} · Cấp lúc ${formatDate(permission.granted_at)}${permission.granted_by ? ` · Bởi ${permission.granted_by}` : ""}`;
+                item.append(recipient, details);
+                history.append(item);
+            });
+        } catch (error) {
+            if (activeFileId !== fileId) return;
+            history.replaceChildren();
+            const failure = document.createElement("li");
+            failure.textContent = error.message;
+            history.append(failure);
+        }
+    };
+
     const openFileDetails = (fileId) => {
         const file = files.find((entry) => entry.id === fileId);
         if (!file) return;
@@ -422,6 +547,7 @@
         badge.className = `access-badge ${selectedLink?.access === "public" ? "public" : "private"}`;
         badge.innerHTML = `<i></i>${selectedLink ? (selectedLink.access === "public" ? "Công khai" : "Riêng tư") : "Chưa chia sẻ"}`;
         $("#share-url").textContent = selectedLink?.url || "Chưa có liên kết còn hiệu lực";
+        $("#permission-grant-submit").disabled = false;
         $("#share-description").textContent = selectedLink
             ? `${selectedLink.downloads} lượt tải · Hết hạn ${formatDate(selectedLink.expires_at)}${selectedLink.password_protected ? " · Có mật khẩu" : ""}`
             : "Tạo liên kết mới để bắt đầu chia sẻ tệp.";
@@ -431,6 +557,7 @@
             : "Chưa giới hạn";
         $(".link-setting-row:nth-of-type(3) small").textContent = selectedLink ? formatDate(selectedLink.expires_at) : "—";
         $("#revoke-link").disabled = !selectedLink || selectedLink.status !== "active";
+        loadPermissionHistory(file.id);
         activateView("shared");
     };
 
@@ -524,7 +651,7 @@
         const name = window.prompt("Tên thư mục mới:");
         if (name === null) return;
         try {
-            const response = await request("folder-create", { method: "POST", body: { name } });
+            const response = await requestPath("api/folders.php", { method: "POST", body: { name } });
             const data = await response.json();
             folders.push(data.folder);
             renderFolders();
@@ -537,7 +664,7 @@
 
     const exportReport = async () => {
         try {
-            const response = await request("report", { method: "POST", body: {} });
+            const response = await requestPath("api/audit.php?format=csv");
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const anchor = document.createElement("a");
@@ -555,7 +682,7 @@
     $("#export-dashboard-report").addEventListener("click", exportReport);
     $("#cleanup-preview").addEventListener("click", async () => {
         try {
-            const response = await request("cleanup-preview");
+            const response = await requestPath("api/cleanup-preview.php");
             const data = await response.json();
             const preview = data.files.map((file) => `${file.name} (${formatSize(file.size)})`).join("\n");
             window.alert(data.files.length
@@ -606,20 +733,20 @@
         }
         const form = new FormData();
         form.append("file", selectedUpload);
-        form.append("file_name", fileNameInput.value.trim());
+        form.append("fileName", fileNameInput.value.trim());
         form.append("folder_id", $("#folder-select").value);
         form.append("access", $('input[name="access"]:checked').value);
-        form.append("max_downloads", $("#download-limit").value);
+        form.append("limit", $("#download-limit").value);
         form.append("expiry_days", $("#expiry-days").value);
         form.append("password", $("#link-password").value);
         try {
-            const response = await request("upload", { method: "POST", body: form, formData: true });
+            const response = await requestPath("api/upload.php", { method: "POST", body: form, formData: true });
             const data = await response.json();
             await loadData();
             selectedUpload = null;
             uploadForm.reset();
             selectedFile.hidden = true;
-            showToast(`Đã tải "${data.file.original_name}" và tạo liên kết chia sẻ.`);
+            showToast(`Đã tải "${data.file.file_name}" và tạo liên kết chia sẻ.`);
             activateView("files");
         } catch (error) {
             showToast(error.message);
@@ -643,12 +770,35 @@
     $("#revoke-link").addEventListener("click", async () => {
         if (!activeLinkId) return;
         try {
-            await request("link-revoke", { method: "POST", body: { link_id: activeLinkId } });
+            await requestPath("api/revoke.php", { method: "POST", body: { file_id: activeLinkId } });
             await loadData();
             openFileDetails(activeFileId);
             showToast("Đã thu hồi liên kết chia sẻ.");
         } catch (error) {
             showToast(error.message);
+        }
+    });
+    $("#permission-grant-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!activeFileId) {
+            showToast("Chọn một tệp trước khi cấp quyền.");
+            return;
+        }
+        const fileId = activeFileId;
+        const submitButton = $("#permission-grant-submit");
+        submitButton.disabled = true;
+        try {
+            await requestPath("api/permissions.php", {
+                method: "POST",
+                body: { file_id: fileId, email: $("#permission-email").value.trim() },
+            });
+            $("#permission-email").value = "";
+            await loadPermissionHistory(fileId);
+            showToast("Đã cấp quyền tải tệp.");
+        } catch (error) {
+            showToast(error.message);
+        } finally {
+            submitButton.disabled = false;
         }
     });
     $("#create-link").addEventListener("click", async () => {
@@ -664,7 +814,7 @@
         const password = window.prompt("Mật khẩu liên kết (để trống nếu không cần):", "");
         if (password === null) return;
         try {
-            await request("link-create", {
+            await requestPath("api/link.php", {
                 method: "POST",
                 body: {
                     file_id: activeFileId,
@@ -686,9 +836,18 @@
         if (!row) return;
         const link = links.find((entry) => entry.id === row.dataset.linkId);
         if (!link) return;
+        if (event.target.closest(".copy-link-row")) {
+            try {
+                await navigator.clipboard.writeText(link.url);
+                showToast("Đã sao chép liên kết chia sẻ.");
+            } catch {
+                showToast("Không thể sao chép tự động. Hãy mở liên kết rồi sao chép địa chỉ.");
+            }
+            return;
+        }
         if (event.target.closest(".revoke-link-row")) {
             try {
-                await request("link-revoke", { method: "POST", body: { link_id: link.id } });
+                await requestPath("api/revoke.php", { method: "POST", body: { file_id: link.file_id } });
                 await loadData();
                 showToast("Đã thu hồi liên kết.");
             } catch (error) {
@@ -717,6 +876,7 @@
             await loadData();
         } catch (error) {
             authError.textContent = error.message;
+            if (authOverlay.hidden) showToast(error.message);
         }
     });
     $("#profile-card").addEventListener("click", async () => {
@@ -756,7 +916,9 @@
             authOverlay.hidden = true;
             await loadData();
         } catch (error) {
-            authError.textContent = `Không thể kết nối với máy chủ: ${error.message}`;
+            const message = `Không thể tải dữ liệu: ${error.message}`;
+            authError.textContent = message;
+            showToast(message);
         }
     };
     start();
