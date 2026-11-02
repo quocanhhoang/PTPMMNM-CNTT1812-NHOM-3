@@ -1,4 +1,11 @@
 (() => {
+    try {
+        const preferences = JSON.parse(localStorage.getItem("fileshare-user-preferences") || "{}");
+        document.body.dataset.theme = preferences.theme === "dark" ? "dark" : "light";
+    } catch (error) {
+        console.error("Unable to load FileShare appearance preference.", error);
+    }
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const toast = document.getElementById("admin-toast");
     const userSearch = document.getElementById("admin-user-search");
@@ -37,6 +44,7 @@
         link_created: "đã tạo liên kết",
         link_revoked: "đã thu hồi liên kết",
         permission_granted: "đã cấp quyền",
+        permission_revoked: "đã thu hồi quyền",
     };
 
     const renderActivity = (activity) => {
