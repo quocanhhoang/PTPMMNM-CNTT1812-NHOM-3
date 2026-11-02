@@ -26,7 +26,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=folder-move-panel-5">
 </head>
 <body>
     <div class="app-shell">
@@ -246,6 +246,6 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/js/script.js"></script>
     <script src="assets/js/file-library.js"></script>
-    <script src="assets/js/folders.js"></script>
+    <script src="assets/js/folders.js?v=folder-move-panel-5"></script>
 </body>
 </html>
