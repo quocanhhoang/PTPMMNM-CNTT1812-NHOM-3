@@ -46,54 +46,21 @@ function app_session_start(): void
     }
 }
 
-function app_db(): PDO
-{
-    static $connection = null;
-    if ($connection instanceof PDO) {
-        return $connection;
-    }
-    $host = getenv('DB_HOST') ?: 'localhost';
-    $port = getenv('DB_PORT') ?: '5432';
-    $database = getenv('DB_NAME') ?: 'fileSharing';
-    $username = getenv('DB_USER') ?: 'admin';
-    $password = getenv('DB_PASSWORD');
-    if (!preg_match('/\A[a-zA-Z0-9_.:-]+\z/', $host)
-        || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $database)
-        || !preg_match('/\A[a-zA-Z0-9_.-]+\z/', $username)
-        || filter_var($port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]) === false) {
-        throw new RuntimeException('Cấu hình kết nối PostgreSQL không hợp lệ.');
-    }
-    try {
-        $connection = new PDO(
-            "pgsql:host=$host;port=$port;dbname=$database",
-            $username,
-            $password === false ? '' : $password,
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]
-        );
-        $connection->exec("SET search_path TO public");
-    } catch (PDOException $error) {
-        error_log('FileShare PostgreSQL connection failed: ' . $error->getMessage());
-        throw new RuntimeException('Không thể kết nối PostgreSQL. Hãy kiểm tra DB_HOST, DB_PORT, DB_NAME, DB_USER và DB_PASSWORD.', 0, $error);
-    }
-    return $connection;
-}
-
-function app_character_length(string $value): int
-{
-    $length = preg_match_all('/./us', $value);
-    if ($length === false) {
-        throw new InvalidArgumentException('Văn bản chứa mã ký tự không hợp lệ.');
-    }
-    return $length;
-}
-
 function app_initial_state(): array
 {
     return ['users' => [], 'folders' => [], 'files' => [], 'links' => [], 'audit' => [], 'login_attempts' => []];
+}
+
+function app_db_connection(): PgSql\Connection
+{
+    global $conn;
+    if (!isset($conn) || !$conn instanceof PgSql\Connection) {
+        require_once __DIR__ . '/config/database.php';
+    }
+    if (!$conn instanceof PgSql\Connection) {
+        throw new RuntimeException('Kết nối PostgreSQL chưa sẵn sàng.');
+    }
+    return $conn;
 }
 
 function app_with_state(callable $callback): mixed
@@ -139,27 +106,117 @@ function app_user(): ?array
 {
     app_session_start();
     $userId = $_SESSION['user_id'] ?? null;
-    if (!is_string($userId)) {
+    if (!is_string($userId) || !ctype_digit($userId)) {
         return null;
     }
-    if (!ctype_digit($userId)) {
-        unset($_SESSION['user_id']);
-        return null;
+    $result = pg_query_params(
+        app_db_connection(),
+        'SELECT id, username, full_name, email, password_hash, storage_limit
+         FROM public.users
+         WHERE id = $1 AND status = $2',
+        [$userId, 'active']
+    );
+    if ($result === false) {
+        error_log('Unable to load authenticated user from PostgreSQL: ' . pg_last_error(app_db_connection()));
+        throw new RuntimeException('Không thể xác minh tài khoản.');
     }
-    $query = app_db()->prepare("SELECT id, username, full_name, email, storage_limit FROM public.users WHERE id = :id AND status = 'active'");
-    $query->execute(['id' => $userId]);
-    $user = $query->fetch();
-    if ($user === false) {
-        unset($_SESSION['user_id']);
+    $row = pg_fetch_assoc($result);
+    if ($row === false) {
         return null;
     }
     return [
-        'id' => (string)$user['id'],
-        'username' => $user['username'],
-        'name' => $user['full_name'],
-        'email' => $user['email'],
-        'quota' => (int)$user['storage_limit'],
+        'id' => (string)$row['id'],
+        'username' => $row['username'],
+        'name' => $row['full_name'],
+        'email' => $row['email'],
+        'password_hash' => $row['password_hash'],
+        'quota' => (int)$row['storage_limit'],
     ];
+}
+
+function app_find_user_by_email(string $email): ?array
+{
+    $connection = app_db_connection();
+    $result = pg_query_params(
+        $connection,
+        'SELECT id, username, full_name, email, password_hash, storage_limit
+         FROM public.users
+         WHERE lower(email) = lower($1) AND status = $2
+         LIMIT 1',
+        [$email, 'active']
+    );
+    if ($result === false) {
+        error_log('Unable to look up login account in PostgreSQL: ' . pg_last_error($connection));
+        throw new RuntimeException('Không thể xác minh tài khoản.');
+    }
+    $row = pg_fetch_assoc($result);
+    if ($row === false) {
+        return null;
+    }
+    return [
+        'id' => (string)$row['id'],
+        'username' => $row['username'],
+        'name' => $row['full_name'],
+        'email' => $row['email'],
+        'password_hash' => $row['password_hash'],
+        'quota' => (int)$row['storage_limit'],
+    ];
+}
+
+function app_register_user(string $email, string $password, string $name): ?array
+{
+    $connection = app_db_connection();
+    $emailPrefix = strtolower((string)strstr($email, '@', true));
+    $usernamePrefix = trim((string)preg_replace('/[^a-z0-9_]+/', '_', $emailPrefix), '_');
+    $username = substr($usernamePrefix !== '' ? $usernamePrefix : 'user', 0, 35)
+        . '_' . bin2hex(random_bytes(5));
+
+    if (!pg_query($connection, 'BEGIN')) {
+        error_log('Unable to begin PostgreSQL registration transaction: ' . pg_last_error($connection));
+        throw new RuntimeException('Không thể tạo tài khoản lúc này.');
+    }
+    try {
+        $result = pg_query_params(
+            $connection,
+            'INSERT INTO public.users (username, full_name, email, password_hash, status, storage_limit)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT DO NOTHING
+             RETURNING id, username, full_name, email, password_hash, storage_limit',
+            [$username, $name, $email, password_hash($password, PASSWORD_DEFAULT), 'active', 10 * 1024 * 1024 * 1024]
+        );
+        if ($result === false) {
+            error_log('Unable to register PostgreSQL user: ' . pg_last_error($connection));
+            throw new RuntimeException('Không thể lưu tài khoản vào PostgreSQL.');
+        }
+        $row = pg_fetch_assoc($result);
+        if ($row === false) {
+            pg_query($connection, 'ROLLBACK');
+            return null;
+        }
+        $user = [
+            'id' => (string)$row['id'],
+            'username' => $row['username'],
+            'name' => $row['full_name'],
+            'email' => $row['email'],
+            'password_hash' => $row['password_hash'],
+            'quota' => (int)$row['storage_limit'],
+        ];
+        app_with_state(static function (array &$state) use ($user): void {
+            $state['folders'][] = [
+                'id' => bin2hex(random_bytes(12)),
+                'user_id' => $user['id'],
+                'name' => 'Tệp của tôi',
+                'created_at' => gmdate('c'),
+            ];
+        });
+        if (!pg_query($connection, 'COMMIT')) {
+            throw new RuntimeException('Không thể hoàn tất đăng ký trong PostgreSQL.');
+        }
+        return $user;
+    } catch (Throwable $error) {
+        pg_query($connection, 'ROLLBACK');
+        throw $error;
+    }
 }
 
 function app_require_user(): array

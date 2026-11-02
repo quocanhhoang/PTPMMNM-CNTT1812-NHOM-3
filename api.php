@@ -5,10 +5,6 @@ require_once __DIR__ . '/lib.php';
 app_session_start();
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
-set_exception_handler(static function (Throwable $error): void {
-    error_log('FileShare API error: ' . $error->getMessage());
-    app_json(['error' => 'Dịch vụ chưa sẵn sàng. Hãy kiểm tra kết nối PostgreSQL và cấu hình máy chủ.'], 503);
-});
 
 $action = (string)($_GET['action'] ?? '');
 
@@ -97,71 +93,21 @@ try {
             $email = strtolower(trim((string)($input['email'] ?? '')));
             $password = (string)($input['password'] ?? '');
             $name = trim((string)($input['name'] ?? ''));
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
                 app_json(['error' => 'Vui lòng nhập địa chỉ email hợp lệ.'], 422);
             }
             if (strlen($password) < 10 || strlen($password) > 200) {
                 app_json(['error' => 'Mật khẩu cần có từ 10 đến 200 ký tự.'], 422);
             }
-            if ($name === '' || preg_match('/[\x00-\x1f\x7f]/u', $name) || app_character_length($name) > 100) {
+            if ($name === '' || strlen($name) > 320 || preg_match('//u', $name) !== 1) {
                 app_json(['error' => 'Tên hiển thị không hợp lệ.'], 422);
             }
-            $database = app_db();
-            $existing = $database->prepare('SELECT 1 FROM public.users WHERE lower(email) = lower(:email) LIMIT 1');
-            $existing->execute(['email' => $email]);
-            if ($existing->fetchColumn()) {
+            $user = app_register_user($email, $password, $name);
+            if ($user === null) {
                 app_json(['error' => 'Email này đã được đăng ký.'], 409);
             }
-            $localName = explode('@', $email, 2)[0];
-            $usernameBase = strtolower((string)preg_replace('/[^a-z0-9_.-]/i', '', $localName));
-            $usernameBase = substr($usernameBase !== '' ? $usernameBase : 'user', 0, 40);
-            $row = null;
-            for ($attempt = 0; $attempt < 5; $attempt++) {
-                $username = $usernameBase . '_' . bin2hex(random_bytes(4));
-                try {
-                    $insert = $database->prepare(
-                        'INSERT INTO public.users (username, full_name, email, password_hash)
-                         VALUES (:username, :full_name, :email, :password_hash)
-                         RETURNING id, username, full_name, email, storage_limit'
-                    );
-                    $insert->execute([
-                        'username' => $username,
-                        'full_name' => $name,
-                        'email' => $email,
-                        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                    ]);
-                    $row = $insert->fetch();
-                    break;
-                } catch (PDOException $error) {
-                    if ($error->getCode() !== '23505') {
-                        throw $error;
-                    }
-                    $existing->execute(['email' => $email]);
-                    if ($existing->fetchColumn()) {
-                        app_json(['error' => 'Email này đã được đăng ký.'], 409);
-                    }
-                }
-            }
-            if ($row === null) {
-                throw new RuntimeException('Không thể tạo username duy nhất cho tài khoản mới.');
-            }
-            $user = [
-                'id' => (string)$row['id'],
-                'username' => $row['username'],
-                'name' => $row['full_name'],
-                'email' => $row['email'],
-                'quota' => (int)$row['storage_limit'],
-            ];
-            app_with_state(static function (array &$state) use ($user): void {
-                $state['folders'][] = [
-                    'id' => bin2hex(random_bytes(12)),
-                    'user_id' => $user['id'],
-                    'name' => 'Tệp của tôi',
-                    'created_at' => gmdate('c'),
-                ];
-            });
             session_regenerate_id(true);
-            $_SESSION['user_id'] = (string)$user['id'];
+            $_SESSION['user_id'] = $user['id'];
             $_SESSION['csrf'] = bin2hex(random_bytes(32));
             app_json(['user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']], 'csrf' => $_SESSION['csrf']]);
         }
@@ -181,15 +127,8 @@ try {
             if ($attempts['count'] >= 8) {
                 app_json(['error' => 'Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 15 phút.'], 429);
             }
-            $query = app_db()->prepare(
-                "SELECT id, username, full_name, email, password_hash, storage_limit
-                 FROM public.users
-                 WHERE lower(email) = lower(:email) AND status = 'active'
-                 LIMIT 1"
-            );
-            $query->execute(['email' => $email]);
-            $row = $query->fetch();
-            if ($row === false || !password_verify($password, $row['password_hash'])) {
+            $user = app_find_user_by_email($email);
+            if ($user === null || !password_verify($password, $user['password_hash'])) {
                 app_with_state(static function (array &$state) use ($bucket, $attempts): void {
                     $current = $state['login_attempts'][$bucket] ?? $attempts;
                     $current['count']++;
@@ -197,18 +136,11 @@ try {
                 });
                 app_json(['error' => 'Email hoặc mật khẩu không chính xác.'], 401);
             }
-            $user = [
-                'id' => (string)$row['id'],
-                'username' => $row['username'],
-                'name' => $row['full_name'],
-                'email' => $row['email'],
-                'quota' => (int)$row['storage_limit'],
-            ];
             app_with_state(static function (array &$state) use ($bucket): void {
                 unset($state['login_attempts'][$bucket]);
             });
             session_regenerate_id(true);
-            $_SESSION['user_id'] = (string)$user['id'];
+            $_SESSION['user_id'] = $user['id'];
             $_SESSION['csrf'] = bin2hex(random_bytes(32));
             app_json(['user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']], 'csrf' => $_SESSION['csrf']]);
         }
@@ -544,12 +476,6 @@ try {
     app_json(['error' => $error->getMessage()], 422);
 } catch (OutOfBoundsException $error) {
     app_json(['error' => $error->getMessage()], 404);
-} catch (PDOException $error) {
-    error_log('FileShare PostgreSQL query failed: ' . $error->getMessage());
-    app_json(['error' => 'Không thể truy cập bảng tài khoản PostgreSQL. Hãy kiểm tra quyền SELECT/INSERT của DB_USER.'], 503);
-} catch (RuntimeException $error) {
-    error_log('FileShare API service error: ' . $error->getMessage());
-    app_json(['error' => $error->getMessage()], 503);
 } catch (Throwable $error) {
     error_log('FileShare API error: ' . $error->getMessage());
     app_json(['error' => 'Đã xảy ra lỗi máy chủ. Vui lòng thử lại sau.'], 500);
