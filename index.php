@@ -89,9 +89,18 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
             <header class="topbar">
                 <div class="breadcrumbs"><span>Không gian làm việc</span><span class="breadcrumb-divider">/</span><strong id="breadcrumb-current">Chung</strong></div>
                 <div class="topbar-actions">
-                    <button class="icon-button search-button" type="button" aria-label="Tìm kiếm">
+                    <button class="icon-button search-button" id="global-search-toggle" type="button" aria-label="Tìm kiếm tệp" title="Tìm kiếm nhanh (Ctrl+K)" aria-expanded="false" aria-controls="global-search-panel">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg>
                     </button>
+                    <section class="topbar-popover search-popover" id="global-search-panel" aria-label="Tìm kiếm tệp" hidden>
+                        <label class="global-search-field">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.5 15.5 4 4"/></svg>
+                            <input id="global-search-input" type="search" placeholder="Tìm tên tệp hoặc thư mục..." autocomplete="off">
+                            <kbd>ESC</kbd>
+                        </label>
+                        <p class="popover-caption" id="search-result-caption">Tệp của bạn</p>
+                        <div class="global-search-results" id="global-search-results" role="listbox" aria-label="Kết quả tìm kiếm"></div>
+                    </section>
                     <div class="notification-menu">
                     <button class="icon-button notification-button" type="button" aria-label="Thông báo" aria-expanded="false" aria-controls="notification-dropdown">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
@@ -103,7 +112,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                     </section>
                     </div>
                     <span class="topbar-divider"></span>
-                    <span class="avatar avatar-small"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span>
+                    <button class="topbar-profile-button" type="button" data-open-personal aria-label="Mở thông tin cá nhân"><span class="avatar avatar-small"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span></button>
                     <button class="logout-button" type="button" id="logout-button">Đăng xuất</button>
                 </div>
             </header>
@@ -245,11 +254,39 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                             <div class="detail-section permission-section"><div class="permission-heading"><div><h3>Người được cấp quyền</h3><p>Những người có quyền truy cập tệp này.</p></div><span class="permission-count" id="permission-count">0 người</span></div><div class="permission-list" id="permission-list"></div><button class="text-button permission-history-toggle" type="button" id="permission-history-toggle">Xem lịch sử cấp quyền</button><div class="permission-history" id="permission-history" hidden></div><form class="add-user-form" id="add-user-form"><label class="sr-only" for="user-email">Địa chỉ email</label><input id="user-email" type="email" placeholder="Nhập địa chỉ email..." required><button class="secondary-button" type="submit"><span aria-hidden="true">+</span> Thêm người dùng</button></form></div>
                             <div class="detail-section file-management-section"><h3>Quản lý tệp</h3><form id="move-file-form"><label class="sr-only" for="move-folder">Chuyển vào thư mục</label><select class="text-input" id="move-folder"><option value="">Không có thư mục</option></select><button class="secondary-button" type="submit">Chuyển thư mục</button></form><button class="danger-button" type="button" id="delete-file">Xóa tệp</button></div>
                         </section>
-                        <aside class="content-card link-settings"><h2>Cài đặt liên kết</h2><div class="link-setting-row"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.72-1.72"/></svg></span><div><strong>Liên kết chia sẻ</strong><small id="link-status-label">Liên kết đang hoạt động</small></div><span class="toggle on" id="link-status-toggle" aria-label="Đang bật"><i></i></span></div><div class="link-setting-row"><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span><div><strong>Giới hạn lượt tải</strong><small id="link-download-limit">—</small></div></div><div class="link-setting-row"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><div><strong>Ngày hết hạn</strong><small id="link-expiry">—</small></div></div><label class="field-label" for="detail-link-limit">Giới hạn lượt tải (để trống = không giới hạn)</label><input class="text-input" id="detail-link-limit" type="number" min="1" placeholder="Không giới hạn"><label class="field-label" for="detail-link-expiry">Ngày hết hạn (để trống = không hết hạn)</label><input class="text-input" id="detail-link-expiry" type="date" min="<?= date('Y-m-d') ?>"><p class="settings-note">Lưu cài đặt sẽ tạo mã liên kết mới và đặt lại lượt tải về 0.</p>                        <button class="primary-button create-link-button" type="button" id="create-link">Lưu cài đặt và tạo mã mới</button><button class="secondary-button share-link-button" type="button" id="share-file">Chia sẻ liên kết</button><button class="danger-button" type="button" id="revoke-link">Thu hồi liên kết</button></aside>
+                        <aside class="content-card link-settings"><h2>Cài đặt liên kết</h2><div class="link-setting-row"><span class="stat-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3A5 5 0 0 0 13 2.93l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21.07l1.72-1.72"/></svg></span><div><strong>Liên kết chia sẻ</strong><small id="link-status-label">Liên kết đang hoạt động</small></div><span class="toggle on" id="link-status-toggle" aria-label="Đang bật"><i></i></span></div><div class="link-setting-row"><span class="stat-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0 4-4m-4 4-4-4"/><path d="M5 18v2h14v-2"/></svg></span><div><strong>Giới hạn lượt tải</strong><small id="link-download-limit">—</small></div></div><div class="link-setting-row"><span class="stat-icon violet"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span><div><strong>Ngày hết hạn</strong><small id="link-expiry">—</small></div></div><label class="field-label" for="detail-link-limit">Giới hạn lượt tải (để trống = không giới hạn)</label><input class="text-input" id="detail-link-limit" type="number" min="1" placeholder="Không giới hạn"><label class="field-label" for="detail-link-expiry">Ngày hết hạn (để trống = không hết hạn)</label><input class="text-input" id="detail-link-expiry" type="date" min="<?= date('Y-m-d') ?>"><p class="settings-note">Lưu cài đặt sẽ tạo mã liên kết mới và đặt lại lượt tải về 0.</p>                        <button class="primary-button create-link-button" type="button" id="create-link">Lưu cài đặt</button><button class="secondary-button share-link-button" type="button" id="share-file">Chia sẻ liên kết</button><button class="danger-button" type="button" id="revoke-link">Thu hồi liên kết</button></aside>
                     </div>
                     </section>
                 </section>
-                <footer class="page-footer"><span>© 2026 FileShare</span><span>Chia sẻ tệp dễ dàng và an toàn.</span><a href="#" id="help-link">Trung tâm trợ giúp</a></footer>
+                <section class="view-panel" id="personal-view" aria-labelledby="personal-title">
+                    <div class="page-heading"><div><p class="eyebrow">TÀI KHOẢN CỦA BẠN</p><h1 id="personal-title">Thông tin cá nhân</h1><p class="welcome-subtitle">Thông tin tài khoản và tình trạng sử dụng dung lượng.</p></div></div>
+                    <section class="content-card account-profile-card">
+                        <div class="account-profile-heading"><span class="avatar" id="personal-avatar"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span><div><h2 id="personal-name"><?= htmlspecialchars($currentUserName, ENT_QUOTES, 'UTF-8') ?></h2><p id="personal-email">Đang tải...</p></div></div>
+                        <div class="account-summary-grid">
+                            <article><span>Dung lượng đã dùng</span><strong id="personal-storage-used">0 B</strong></article>
+                            <article><span>Hạn mức hiện tại</span><strong id="personal-storage-quota">Đang tải...</strong></article>
+                            <article><span>Tệp trong tài khoản</span><strong id="personal-file-count">0</strong></article>
+                        </div>
+                        <div class="heading-actions"><button class="secondary-button" type="button" data-open-settings>Cài đặt người dùng</button><button class="primary-button" type="button" data-open-upgrade>Nâng cấp dung lượng</button></div>
+                    </section>
+                </section>
+                <section class="view-panel" id="settings-view" aria-labelledby="settings-title">
+                    <div class="page-heading"><div><p class="eyebrow">CÁ NHÂN HÓA TRẢI NGHIỆM</p><h1 id="settings-title">Cài đặt người dùng</h1><p class="welcome-subtitle">Tùy chọn được lưu trên trình duyệt này.</p></div><button class="secondary-button" type="button" data-open-personal>← Thông tin cá nhân</button></div>
+                    <section class="content-card user-settings-card">
+                        <div class="user-setting-row"><div><strong>Giao diện</strong><p>Chọn chế độ sáng hoặc tối cho FileShare.</p></div><label class="user-setting-control" for="setting-theme"><span class="sr-only">Chế độ giao diện</span><select class="text-input" id="setting-theme"><option value="light">Sáng</option><option value="dark">Tối</option></select></label></div>
+                        <div class="user-setting-row"><div><strong>Quyền chia sẻ mặc định</strong><p>Áp dụng khi bắt đầu tải tệp lên; có thể đổi cho từng tệp.</p></div><label class="user-setting-control" for="setting-default-access"><span class="sr-only">Quyền chia sẻ mặc định</span><select class="text-input" id="setting-default-access"><option value="public">Công khai</option><option value="private">Riêng tư</option></select></label></div>
+                    </section>
+                </section>
+                <section class="view-panel" id="upgrade-view" aria-labelledby="upgrade-title">
+                    <div class="page-heading"><div><p class="eyebrow">MỞ RỘNG KHÔNG GIAN</p><h1 id="upgrade-title">Nâng cấp dung lượng</h1><p class="welcome-subtitle">Chọn hạn mức phù hợp với nhu cầu lưu trữ.</p></div><button class="secondary-button" type="button" data-open-personal>← Tài khoản của tôi</button></div>
+                    <section class="plan-notice" aria-live="polite"><strong>Hạn mức hiện tại: <span id="current-plan-label">Đang tải...</span></strong><p>Thanh toán chưa được tích hợp. Chọn gói sẽ cập nhật hạn mức ngay và hiện chưa thu phí.</p></section>
+                    <div class="plan-grid" id="storage-plans">
+                        <article class="plan-card" data-plan-gb="5"><p class="plan-name">Gói 5 GB</p><strong class="plan-capacity">5 <small>GB</small></strong><p class="plan-description">Dành cho nhu cầu lưu trữ cơ bản.</p><span class="plan-status" hidden></span><button class="primary-button plan-action" type="button" data-plan-gb="5">Chọn gói 5 GB</button></article>
+                        <article class="plan-card" data-plan-gb="10"><p class="plan-name">Gói 10 GB</p><strong class="plan-capacity">10 <small>GB</small></strong><p class="plan-price">150.000đ</p><p class="plan-description">Thêm không gian cho tài liệu và hình ảnh.</p><span class="plan-status" hidden></span><button class="primary-button plan-action" type="button" data-plan-gb="10">Chọn gói 10 GB</button></article>
+                        <article class="plan-card plan-card-featured" data-plan-gb="100"><span class="plan-badge">Dung lượng lớn</span><p class="plan-name">Gói 100 GB</p><strong class="plan-capacity">100 <small>GB</small></strong><p class="plan-price">5.000.000đ</p><p class="plan-description">Thoải mái lưu trữ nhiều tệp dung lượng lớn.</p><span class="plan-status" hidden></span><button class="primary-button plan-action" type="button" data-plan-gb="100">Chọn gói 100 GB</button></article>
+                    </div>
+                </section>
+                <footer class="page-footer"><span>© 2026 FileShare</span><span>Chia sẻ tệp dễ dàng và an toàn.</span><button class="text-button" id="cleanup-preview" type="button">Xem trước tệp cần dọn</button><a href="#" id="help-link">Trung tâm trợ giúp</a></footer>
             </div>
         </main>
     </div>

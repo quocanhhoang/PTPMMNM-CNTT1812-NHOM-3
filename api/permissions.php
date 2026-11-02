@@ -37,7 +37,7 @@ if (pg_num_rows($ownedFile) === 0) {
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $result = pg_query_params(
         $conn,
-        'SELECT u.full_name, u.email
+        'SELECT u.id, u.full_name, u.email
          FROM file_permissions fp
          JOIN users u ON u.id = fp.user_id
          WHERE fp.file_id = $1
@@ -116,4 +116,4 @@ if (!pg_query($conn, 'COMMIT')) {
     json_response(['error' => 'Không thể lưu quyền truy cập.'], 500);
 }
 
-json_response(['permission' => ['full_name' => $user['full_name'], 'email' => $user['email']]], 201);
+json_response(['permission' => ['id' => (int) $user['id'], 'full_name' => $user['full_name'], 'email' => $user['email']]], 201);

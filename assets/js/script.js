@@ -8,6 +8,10 @@
     const notificationButton = document.querySelector(".notification-button");
     const notificationDropdown = document.getElementById("notification-dropdown");
     const notificationList = document.getElementById("notification-list");
+    const searchToggle = document.getElementById("global-search-toggle");
+    const searchPanel = document.getElementById("global-search-panel");
+    const searchInput = document.getElementById("global-search-input");
+    const searchResults = document.getElementById("global-search-results");
     const fileInput = document.getElementById("file-input");
     const fileNameInput = document.getElementById("file-name");
     const selectedFile = document.getElementById("selected-file");
@@ -18,6 +22,8 @@
     let selectedFileId = null;
     let files = [];
     let storageAccount = null;
+    const preferenceKey = "fileshare-user-preferences";
+    let userPreferences = { theme: "light", defaultAccess: "public" };
 
     const showToast = (message) => {
         toast.textContent = message;
@@ -25,6 +31,42 @@
         window.clearTimeout(toastTimer);
         toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 3200);
     };
+
+    try {
+        const savedPreferences = JSON.parse(localStorage.getItem(preferenceKey) || "{}");
+        userPreferences = {
+            theme: savedPreferences.theme === "dark" ? "dark" : "light",
+            defaultAccess: savedPreferences.defaultAccess === "private" ? "private" : "public",
+        };
+    } catch {
+        showToast("Không thể đọc cài đặt đã lưu trên trình duyệt.");
+    }
+
+    const persistPreferences = () => {
+        try {
+            localStorage.setItem(preferenceKey, JSON.stringify(userPreferences));
+            return true;
+        } catch {
+            showToast("Không thể lưu cài đặt trên trình duyệt này.");
+            return false;
+        }
+    };
+
+    const applyTheme = () => {
+        document.body.dataset.theme = userPreferences.theme;
+        document.getElementById("setting-theme").value = userPreferences.theme;
+    };
+
+    const applyDefaultAccess = () => {
+        document.querySelectorAll('input[name="access"]').forEach((radio) => {
+            radio.checked = radio.value === userPreferences.defaultAccess;
+            radio.closest(".radio-card").classList.toggle("selected", radio.checked);
+        });
+        document.getElementById("setting-default-access").value = userPreferences.defaultAccess;
+    };
+
+    applyTheme();
+    applyDefaultAccess();
 
     const apiRequest = async (url, { method = "GET", body } = {}) => {
         const headers = { "X-CSRF-Token": csrfToken };
@@ -67,15 +109,78 @@
         document.getElementById("stat-file-count").textContent = String(account.file_count);
         document.getElementById("stat-downloads-today").textContent = String(account.downloads_today);
         document.getElementById("stat-storage-used").textContent = formatStorage(used);
+        document.getElementById("personal-storage-used").textContent = formatStorage(used);
+        document.getElementById("personal-storage-quota").textContent = formatStorage(quota);
+        document.getElementById("personal-file-count").textContent = String(account.file_count);
+        document.getElementById("current-plan-label").textContent = formatStorage(quota);
+        updatePlanOptions();
     };
 
     const loadAccount = async () => {
         try {
             const { account } = await apiRequest("api/account.php");
+            document.getElementById("personal-name").textContent = account.full_name;
+            document.getElementById("personal-email").textContent = account.email;
+            document.getElementById("personal-avatar").textContent = [...account.full_name][0] || "U";
             renderQuota(account);
         } catch (error) {
             showToast(error.message);
         }
+    };
+
+    const updatePlanOptions = () => {
+        if (!storageAccount) {
+            document.querySelectorAll(".plan-action").forEach((button) => { button.disabled = false; });
+            return;
+        }
+        const quota = storageAccount.storage_quota_bytes;
+        const currentGb = quota / (1024 ** 3);
+        document.querySelectorAll(".plan-card").forEach((card) => {
+            const planGb = Number(card.dataset.planGb);
+            const button = card.querySelector(".plan-action");
+            const status = card.querySelector(".plan-status");
+            const isCurrent = planGb === currentGb;
+            const isLower = planGb < currentGb;
+            button.disabled = isCurrent || isLower;
+            status.hidden = !isCurrent && !isLower;
+            status.textContent = isCurrent ? "Gói hiện tại" : "Thấp hơn hạn mức hiện tại";
+            card.classList.toggle("plan-card-current", isCurrent);
+        });
+    };
+
+    const folderNameForFile = (file) => {
+        const folders = window.fileShareFolders || [];
+        return folders.find((folder) => folder.id === file.folder_id)?.name || "";
+    };
+
+    const renderSearchResults = () => {
+        const query = searchInput.value.trim().toLocaleLowerCase("vi");
+        searchResults.replaceChildren();
+        const matches = files.filter((file) => (
+            `${file.file_name} ${folderNameForFile(file)}`.toLocaleLowerCase("vi").includes(query)
+        )).slice(0, 20);
+        document.getElementById("search-result-caption").textContent = query
+            ? `${matches.length} kết quả`
+            : "Tệp gần đây";
+        if (matches.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "popover-empty";
+            empty.textContent = query ? "Không tìm thấy tệp phù hợp." : "Bạn chưa có tệp nào.";
+            searchResults.append(empty);
+            return;
+        }
+        matches.forEach((file) => {
+            const result = document.createElement("button");
+            result.className = "global-search-result";
+            result.type = "button";
+            result.dataset.fileId = String(file.id);
+            const name = document.createElement("strong");
+            name.textContent = file.file_name;
+            const folder = document.createElement("small");
+            folder.textContent = folderNameForFile(file) || "Không có thư mục";
+            result.append(name, folder);
+            searchResults.append(result);
+        });
     };
 
     const getIconType = (name) => {
@@ -97,6 +202,9 @@
             upload: "Tải tệp lên",
             shared: "Chi tiết tệp",
             folders: "Thư mục",
+            personal: "Thông tin cá nhân",
+            settings: "Cài đặt người dùng",
+            upgrade: "Nâng cấp dung lượng",
         }[viewName] || "Chung";
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
@@ -326,6 +434,7 @@
         permissions.forEach((permission) => {
             const user = document.createElement("div");
             user.className = "permission-user";
+            user.dataset.userId = String(permission.id);
             const avatar = document.createElement("span");
             avatar.className = "mini-avatar user-c";
             avatar.textContent = permission.email.slice(0, 2).toUpperCase();
@@ -339,7 +448,13 @@
             check.className = "permission-check";
             check.setAttribute("aria-label", "Được cấp quyền");
             check.textContent = "✓";
-            user.append(avatar, copy, check);
+            const revokeButton = document.createElement("button");
+            revokeButton.className = "permission-remove-button";
+            revokeButton.type = "button";
+            revokeButton.dataset.revokePermission = "";
+            revokeButton.setAttribute("aria-label", `Thu hồi quyền của ${permission.email}`);
+            revokeButton.textContent = "Thu hồi";
+            user.append(avatar, copy, check, revokeButton);
             permissionList.append(user);
         });
         document.getElementById("permission-count").textContent = `${permissions.length} người`;
@@ -366,11 +481,10 @@
         });
     };
 
-    const openFileDetails = async (event) => {
-        const row = event.target.closest(".file-row");
-        if (!row) return;
-
-        const file = files.find((item) => item.id === Number(row.dataset.fileId));
+    const openFileDetails = async (eventOrFileId) => {
+        const row = typeof eventOrFileId === "number" ? null : eventOrFileId.target.closest(".file-row");
+        const fileId = typeof eventOrFileId === "number" ? eventOrFileId : Number(row?.dataset.fileId);
+        const file = files.find((item) => item.id === fileId);
         if (!file) return;
         if (file.is_missing) {
             showToast(`Không tìm thấy “${file.file_name}” trên ổ đĩa. Hãy kiểm tra thư mục lưu trữ hoặc tải tệp lên lại.`);
@@ -460,7 +574,6 @@
             const row = action.closest(".file-row");
             action.closest(".file-action-menu").hidden = true;
             action.closest(".file-action-menu-wrap").querySelector(".row-menu").setAttribute("aria-expanded", "false");
-            const fileId = Number(row.dataset.fileId);
             if (action.dataset.fileAction === "delete") {
                 await deleteFileRecord(fileId);
             } else if (action.dataset.fileAction === "share") {
@@ -593,6 +706,7 @@
                 file_count: storageAccount.file_count + 1,
             });
             form.reset();
+            applyDefaultAccess();
             selectedUpload = null;
             selectedFile.hidden = true;
             document.querySelectorAll(".radio-card").forEach((card) => {
@@ -651,6 +765,44 @@
             }
             showToast("Đã lưu quyền truy cập.");
         } catch (error) {
+            showToast(error.message);
+        }
+    });
+
+    document.getElementById("permission-list").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-revoke-permission]");
+        if (!button || !selectedFileId) return;
+
+        const user = button.closest(".permission-user");
+        const permissionUserId = Number(user?.dataset.userId);
+        const permissionEmail = user?.querySelector("small")?.textContent ?? "người dùng này";
+        const file = files.find((item) => item.id === selectedFileId);
+        if (!Number.isInteger(permissionUserId) || permissionUserId < 1) {
+            showToast("Không xác định được người dùng cần thu hồi quyền.");
+            return;
+        }
+        const publicLinkWarning = file?.access_type === "public"
+            ? "\n\nTệp đang công khai; người này vẫn có thể tải qua liên kết công khai."
+            : "";
+        if (!window.confirm(`Bạn có chắc muốn thu hồi quyền tải của ${permissionEmail}?${publicLinkWarning}`)) return;
+
+        button.disabled = true;
+        try {
+            await apiRequest("api/revoke_permission.php", {
+                method: "POST",
+                body: { file_id: selectedFileId, user_id: permissionUserId },
+            });
+            user.remove();
+            const permissionCount = document.querySelectorAll("#permission-list .permission-user").length;
+            document.getElementById("permission-count").textContent = `${permissionCount} người`;
+            const listUpdated = await loadSharedFiles();
+            if (!listUpdated) {
+                showToast("Đã thu hồi quyền nhưng không thể cập nhật danh sách chia sẻ.");
+                return;
+            }
+            showToast("Đã thu hồi quyền tải của người dùng.");
+        } catch (error) {
+            button.disabled = false;
             showToast(error.message);
         }
     });
@@ -821,8 +973,108 @@
         showToast("Trung tâm trợ giúp sẽ sớm có mặt.");
     });
 
-    document.querySelectorAll(".search-button, .storage-upgrade, .more-button, .profile-card").forEach((button) => {
-        button.addEventListener("click", () => showToast("Tính năng này sẽ sớm có mặt."));
+    const closeSearch = () => {
+        searchPanel.hidden = true;
+        searchToggle.setAttribute("aria-expanded", "false");
+    };
+
+    searchToggle.addEventListener("click", () => {
+        const opening = searchPanel.hidden;
+        searchPanel.hidden = !opening;
+        searchToggle.setAttribute("aria-expanded", String(opening));
+        if (opening) {
+            renderSearchResults();
+            searchInput.focus();
+        }
+    });
+    searchInput.addEventListener("input", renderSearchResults);
+    searchResults.addEventListener("click", async (event) => {
+        const result = event.target.closest(".global-search-result");
+        if (!result) return;
+        closeSearch();
+        await openFileDetails(Number(result.dataset.fileId));
+    });
+    document.addEventListener("click", (event) => {
+        if (!event.target.closest("#global-search-panel, #global-search-toggle")) closeSearch();
+    });
+    document.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+            event.preventDefault();
+            searchPanel.hidden = false;
+            searchToggle.setAttribute("aria-expanded", "true");
+            renderSearchResults();
+            searchInput.focus();
+        } else if (event.key === "Escape" && !searchPanel.hidden) {
+            closeSearch();
+            searchToggle.focus();
+        }
+    });
+
+    document.querySelector(".storage-upgrade").addEventListener("click", () => activateView("upgrade"));
+    document.querySelector(".profile-card").addEventListener("click", () => activateView("personal"));
+    document.querySelectorAll("[data-open-personal]").forEach((button) => {
+        button.addEventListener("click", () => activateView("personal"));
+    });
+    document.querySelectorAll("[data-open-settings]").forEach((button) => {
+        button.addEventListener("click", () => activateView("settings"));
+    });
+    document.querySelectorAll("[data-open-upgrade]").forEach((button) => {
+        button.addEventListener("click", () => activateView("upgrade"));
+    });
+
+    document.getElementById("setting-theme").addEventListener("change", (event) => {
+        userPreferences.theme = event.currentTarget.value === "dark" ? "dark" : "light";
+        applyTheme();
+        persistPreferences();
+    });
+    document.getElementById("setting-default-access").addEventListener("change", (event) => {
+        userPreferences.defaultAccess = event.currentTarget.value === "private" ? "private" : "public";
+        applyDefaultAccess();
+        persistPreferences();
+    });
+
+    document.getElementById("storage-plans").addEventListener("click", async (event) => {
+        const button = event.target.closest(".plan-action");
+        if (!button || button.disabled) return;
+        document.querySelectorAll(".plan-action").forEach((planButton) => { planButton.disabled = true; });
+        try {
+            const { quota, message } = await apiRequest("api/upgrade.php", {
+                method: "POST",
+                body: { storage_gb: Number(button.dataset.planGb) },
+            });
+            if (storageAccount) {
+                renderQuota({ ...storageAccount, storage_quota_bytes: quota });
+            }
+            await loadAccount();
+            showToast(message);
+        } catch (error) {
+            updatePlanOptions();
+            showToast(error.message);
+        }
+    });
+
+    document.getElementById("cleanup-preview").addEventListener("click", async () => {
+        try {
+            const { files: cleanupFiles } = await apiRequest("api/cleanup_preview.php");
+            if (cleanupFiles.length === 0) {
+                window.alert("Không có tệp nào cần dọn. Chưa có tệp nào bị xóa.");
+                return;
+            }
+            const preview = cleanupFiles.slice(0, 30).map((file) => {
+                const reasons = [];
+                if (!file.is_link_active) reasons.push("đã thu hồi");
+                if (file.expires_at && new Date(file.expires_at) <= new Date()) reasons.push("hết hạn");
+                if (file.download_limit !== null && file.download_count >= file.download_limit) reasons.push("hết lượt tải");
+                return `${file.file_name} (${formatSize(file.file_size)}) — ${reasons.join(", ")}`;
+            }).join("\n");
+            const remainingCount = cleanupFiles.length - 30;
+            const remaining = remainingCount > 0 ? `\n... và ${remainingCount} tệp khác (xem danh sách đầy đủ trong terminal).` : "";
+            window.alert(
+                `Có ${cleanupFiles.length} tệp có liên kết hết hạn, bị thu hồi hoặc hết lượt tải:\n\n${preview}${remaining}\n\nChưa có tệp nào bị xóa. Để dọn, chạy php bin/cleanup_expired.php rồi rà soát và xác nhận trong terminal.`
+            );
+        } catch (error) {
+            showToast(error.message);
+        }
     });
 
     const formatRelativeTime = (dateValue) => {
