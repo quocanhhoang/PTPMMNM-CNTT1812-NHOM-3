@@ -23,7 +23,7 @@ if ($upload['error'] !== UPLOAD_ERR_OK) {
 
 $fileSize = (int) $upload['size'];
 if ($fileSize < 1 || $fileSize > FILESHARE_MAX_UPLOAD_BYTES) {
-    json_response(['error' => 'Kích thước tệp phải từ 1 byte đến 100 MB.'], 400);
+    json_response(['error' => 'Kích thước tệp phải từ 1 byte đến 1 GB.'], 400);
 }
 
 $fileName = trim((string) ($_POST['fileName'] ?? ''));

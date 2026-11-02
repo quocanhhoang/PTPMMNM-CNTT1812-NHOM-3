@@ -130,6 +130,18 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 .access-badge.missing { background: #fff0f0; color: #c94d55; }
 .row-menu, .more-button { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: #a2a4b2; font-size: 18px; line-height: 1; cursor: pointer; }
 .row-menu:hover, .more-button:hover { background: #f5f4fa; color: var(--purple); }
+.file-action-menu-wrap { position: relative; width: fit-content; }
+.file-action-menu { position: absolute; top: 28px; right: 0; z-index: 6; display: grid; min-width: 126px; padding: 5px; border: 1px solid #ececf3; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #22223a1c; }
+.file-action-menu[hidden] { display: none; }
+.file-action-menu button { padding: 8px 9px; border: 0; border-radius: 5px; background: transparent; color: #55586b; font-size: 10px; text-align: left; cursor: pointer; }
+.file-action-menu button:hover { background: #f5f4fb; color: var(--purple); }
+.file-action-menu button.file-action-delete { color: #c94d55; }
+.file-action-menu button.file-action-delete:hover { background: #fff2f2; }
+.shared-files-empty { margin: 0; padding: 28px 12px; color: #999baa; font-size: 12px; text-align: center; }
+.shared-files-panel[hidden], #shared-details-panel[hidden] { display: none; }
+.shared-file-name { color: #45485d !important; font-weight: 600; }
+.shared-download { min-height: 29px; text-decoration: none; white-space: nowrap; }
+.share-link-button { width: 100%; margin-top: 8px; }
 .activity-card { display: flex; flex-direction: column; }
 .activity-list { display: grid; gap: 17px; margin: 20px 0 13px; }
 .activity-empty { margin: 0; color: #999baa; font-size: 10px; }
@@ -320,6 +332,14 @@ h1 { margin-bottom: 7px; color: #272a40; font-family: Manrope, sans-serif; font-
 .chart-track span { display: block; width: 100%; min-height: 3px; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, #8b7bf4, #6653e5); }
 .chart-column small { color: #999baa; font-size: 9px; }
 .admin-top-files { margin-top: 17px; }
+.admin-user-search-card { margin-top: 17px; }
+.admin-user-search { display: block; margin-top: 14px; }
+.admin-user-search input { width: min(460px, 100%); height: 38px; padding: 0 12px; border: 1px solid #e6e7ef; border-radius: 7px; color: var(--ink); font-size: 11px; }
+.admin-user-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 9px; margin-top: 13px; }
+.admin-user-result { display: grid; gap: 5px; padding: 12px; border: 1px solid #f0f0f5; border-radius: 8px; background: #fdfdff; }
+.admin-user-result strong { color: #414458; font-size: 11px; }
+.admin-user-result span { color: #85889b; font-size: 10px; overflow-wrap: anywhere; }
+.admin-user-result small { color: #8c82dc; font-size: 9px; }
 .admin-file-table { margin-top: 14px; }
 .admin-file-table td { height: 45px; }
 .admin-profile { display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); color: #4a4d61; font-size: 11px; font-weight: 600; }

@@ -1,7 +1,11 @@
 (() => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const toast = document.getElementById("admin-toast");
+    const userSearch = document.getElementById("admin-user-search");
+    const userResults = document.getElementById("admin-user-results");
     let toastTimer;
+    let userSearchTimer;
+    let userSearchSequence = 0;
 
     const showToast = (message) => {
         toast.textContent = message;
@@ -110,6 +114,54 @@
         });
     };
 
+    const renderUsers = (users) => {
+        userResults.replaceChildren();
+        if (users.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "activity-empty";
+            empty.textContent = "Không tìm thấy người dùng phù hợp.";
+            userResults.append(empty);
+            return;
+        }
+        users.forEach((user) => {
+            const item = document.createElement("article");
+            item.className = "admin-user-result";
+            const name = document.createElement("strong");
+            name.textContent = user.full_name;
+            const email = document.createElement("span");
+            email.textContent = user.email;
+            const role = document.createElement("small");
+            role.textContent = user.role === "admin" ? "Quản trị viên" : "Người dùng";
+            item.append(name, email, role);
+            userResults.append(item);
+        });
+    };
+
+    const searchUsers = async () => {
+        const query = userSearch.value.trim();
+        const sequence = ++userSearchSequence;
+        if (!query) {
+            userResults.replaceChildren();
+            const prompt = document.createElement("p");
+            prompt.className = "activity-empty";
+            prompt.textContent = "Nhập tên để tra cứu người dùng.";
+            userResults.append(prompt);
+            return;
+        }
+        userResults.textContent = "Đang tìm kiếm...";
+        try {
+            const response = await fetch(`api/admin_users.php?q=${encodeURIComponent(query)}`, {
+                headers: { Accept: "application/json" },
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Không thể tra cứu người dùng.");
+            if (sequence === userSearchSequence) renderUsers(data.users);
+        } catch (error) {
+            if (sequence !== userSearchSequence) return;
+            userResults.textContent = error.message;
+        }
+    };
+
     const loadDashboard = async () => {
         try {
             const response = await fetch("api/admin_dashboard.php", { headers: { Accept: "application/json" } });
@@ -126,6 +178,11 @@
             showToast(error.message);
         }
     };
+
+    userSearch.addEventListener("input", () => {
+        window.clearTimeout(userSearchTimer);
+        userSearchTimer = window.setTimeout(searchUsers, 250);
+    });
 
     document.getElementById("admin-logout").addEventListener("click", async () => {
         try {
