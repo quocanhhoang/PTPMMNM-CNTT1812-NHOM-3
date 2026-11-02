@@ -694,6 +694,18 @@
     });
 
     const setSelectedFile = (file) => {
+        const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+        const allowedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
+        if (!allowedExtensions.includes(extension) || file.size < 1 || file.size > 100 * 1024 * 1024) {
+            selectedUpload = null;
+            selectedFile.hidden = true;
+            showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–100 MB.");
+            return false;
+        }
+        if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
+            showToast("Tệp vượt quá dung lượng còn trống trong tài khoản.");
+            return false;
+        }
         selectedUpload = file;
         fileNameInput.value = file.name;
         const [iconType, iconLetter] = getIconType(file.name);
@@ -702,10 +714,35 @@
         $("strong", selectedFile).textContent = file.name;
         $("small", selectedFile).textContent = formatSize(file.size);
         selectedFile.hidden = false;
+        return true;
     };
     fileInput.addEventListener("change", () => {
         const [file] = fileInput.files;
-        if (file) setSelectedFile(file);
+        if (!file) return;
+        const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+        const allowedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
+        if (!allowedExtensions.includes(extension)) {
+            selectedUpload = null;
+            selectedFile.hidden = true;
+            fileInput.value = "";
+            showToast("Định dạng tệp này không được hỗ trợ.");
+            return;
+        }
+        if (file.size < 1 || file.size > 100 * 1024 * 1024) {
+            selectedUpload = null;
+            selectedFile.hidden = true;
+            fileInput.value = "";
+            showToast("Kích thước tệp phải từ 1 byte đến 100 MB.");
+            return;
+        }
+        if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
+            selectedUpload = null;
+            selectedFile.hidden = true;
+            fileInput.value = "";
+            showToast("Tệp vượt quá dung lượng còn trống trong tài khoản.");
+            return;
+        }
+        setSelectedFile(file);
     });
     const dropzone = $("#dropzone");
     ["dragenter", "dragover"].forEach((name) => dropzone.addEventListener(name, (event) => {

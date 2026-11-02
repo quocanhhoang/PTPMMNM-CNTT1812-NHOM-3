@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_method('POST');
+$userId = require_authenticated_user();
 require_csrf_token();
 
 $body = json_request_body();

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_method('POST');
+$userId = require_authenticated_user();
 require_csrf_token();
 
 $upload = $_FILES['file'] ?? null;
@@ -26,6 +27,7 @@ if ($fileSize < 1 || $fileSize > FILESHARE_MAX_UPLOAD_BYTES) {
 }
 
 $fileName = trim((string) ($_POST['fileName'] ?? ''));
+$extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 if (
     $fileName === ''
     || strlen($fileName) > 255
@@ -34,6 +36,9 @@ if (
     || preg_match('/[\x00-\x1F\x7F]/', $fileName)
 ) {
     json_response(['error' => 'Tên tệp không hợp lệ (tối đa 255 byte).'], 400);
+}
+if (!in_array($extension, FILESHARE_ALLOWED_EXTENSIONS, true)) {
+    json_response(['error' => 'Định dạng tệp không được hỗ trợ. Hãy chọn một trong các định dạng được liệt kê trên màn hình tải lên.'], 415);
 }
 
 $accessType = $_POST['access'] ?? '';
@@ -131,6 +136,19 @@ if (
 $absolutePath = $folderPath . '/' . $storedName;
 $fileInfo = new finfo(FILEINFO_MIME_TYPE);
 $mimeType = $fileInfo->file($upload['tmp_name']) ?: 'application/octet-stream';
+$allowedMimeTypes = [
+    'pdf' => ['application/pdf'],
+    'txt' => ['text/plain'],
+    'csv' => ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel'],
+    'png' => ['image/png'],
+    'jpg' => ['image/jpeg'],
+    'jpeg' => ['image/jpeg'],
+    'gif' => ['image/gif'],
+    'webp' => ['image/webp'],
+];
+if (!in_array($mimeType, $allowedMimeTypes[$extension] ?? [], true)) {
+    json_response(['error' => 'Nội dung tệp không khớp với phần mở rộng.'], 415);
+}
 
 if (!move_uploaded_file($upload['tmp_name'], $absolutePath)) {
     error_log('Unable to move uploaded file into private storage.');
@@ -188,6 +206,15 @@ try {
     if (!$activity) {
         throw new RuntimeException(pg_last_error($conn));
     }
+    $notification = pg_query_params(
+        $conn,
+        "INSERT INTO notifications (user_id, type, title, message)
+         VALUES ($1, 'upload', 'Tải tệp lên thành công', $2)",
+        [$userId, 'Tệp "' . $fileName . '" đã được tải lên tài khoản của bạn.']
+    );
+    if (!$notification) {
+        throw new RuntimeException(pg_last_error($conn));
+    }
 
     if (!pg_query($conn, 'COMMIT')) {
         throw new RuntimeException(pg_last_error($conn));
@@ -207,6 +234,7 @@ json_response([
         'file_name' => $fileName,
         'file_size' => $fileSize,
         'file_type' => $mimeType,
+        'is_missing' => false,
         'share_code' => $shareCode,
         'access_type' => $accessType,
         'download_limit' => $downloadLimit,
@@ -215,6 +243,6 @@ json_response([
         'is_link_active' => true,
         'password_protected' => $passwordHash !== null,
         'created_at' => $savedFile['created_at'],
-        'folder_id' => (string)$folderId,
+        'folder_id' => (int)$folderId,
     ],
 ], 201);

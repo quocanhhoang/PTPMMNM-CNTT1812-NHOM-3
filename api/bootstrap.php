@@ -29,6 +29,32 @@ function require_csrf_token(): void
     }
 }
 
+function require_authenticated_user(): int
+{
+    $userId = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1],
+    ]);
+    if ($userId === false) {
+        json_response(['error' => 'Vui lòng đăng nhập để tiếp tục.'], 401);
+    }
+    return $userId;
+}
+
+function require_admin_user(): int
+{
+    $userId = require_authenticated_user();
+    $result = pg_query_params($GLOBALS['conn'], 'SELECT role FROM users WHERE id = $1', [$userId]);
+    if (!$result) {
+        error_log('Failed to verify administrator role: ' . pg_last_error($GLOBALS['conn']));
+        json_response(['error' => 'Không thể xác minh quyền quản trị.'], 500);
+    }
+    $account = pg_fetch_assoc($result);
+    if (!$account || $account['role'] !== 'admin') {
+        json_response(['error' => 'Bạn không có quyền truy cập chức năng quản trị.'], 403);
+    }
+    return $userId;
+}
+
 function json_request_body(): array
 {
     $body = json_decode(file_get_contents('php://input'), true);

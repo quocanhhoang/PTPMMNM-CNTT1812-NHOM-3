@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+$userId = require_authenticated_user();
 
 $body = null;
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {

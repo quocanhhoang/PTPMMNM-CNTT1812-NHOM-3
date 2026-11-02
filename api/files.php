@@ -3,6 +3,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_method('GET');
+$userId = require_authenticated_user();
+$folderId = $_GET['folder_id'] ?? null;
+if ($folderId === '') $folderId = null;
+if ($folderId !== null) {
+    $folderId = filter_var($folderId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($folderId === false) json_response(['error' => 'Thư mục được chọn không hợp lệ.'], 400);
+}
 
 $result = pg_query_params(
     $conn,
@@ -11,9 +18,11 @@ $result = pg_query_params(
             f.link_password_hash, f.created_at, f.folder_id, folders.name AS folder_name
      FROM public.files f
      LEFT JOIN public.folders folders ON folders.id = f.folder_id AND folders.owner_id = f.owner_id
-     WHERE f.owner_id = $1 AND f.deleted_at IS NULL
+     WHERE f.owner_id = $1
+       AND f.deleted_at IS NULL
+       AND ($2::bigint IS NULL OR f.folder_id = $2)
      ORDER BY f.created_at DESC, f.id DESC',
-    [FILESHARE_CURRENT_USER_ID]
+    [FILESHARE_CURRENT_USER_ID, $folderId]
 );
 
 if (!$result) {
@@ -49,7 +58,6 @@ while ($file = pg_fetch_assoc($result)) {
         || !str_starts_with($filePath, $storageRoot . DIRECTORY_SEPARATOR)
         || !is_file($filePath)
         || !is_readable($filePath);
-
     if ($missing) {
         $logged = pg_query_params(
             $conn,
@@ -90,6 +98,8 @@ while ($file = pg_fetch_assoc($result)) {
         'file_name' => $file['file_name'],
         'file_size' => (int) $file['file_size'],
         'file_type' => $file['file_type'],
+        'folder_id' => $file['folder_id'] === null ? null : (int)$file['folder_id'],
+        'is_missing' => $missing,
         'share_code' => $file['share_code'],
         'access_type' => $file['access_type'],
         'download_limit' => $file['download_limit'] === null ? null : (int) $file['download_limit'],
@@ -103,7 +113,6 @@ while ($file = pg_fetch_assoc($result)) {
             ? null
             : app_base_url() . '/download.php?code=' . rawurlencode($file['share_code']),
         'created_at' => $file['created_at'],
-        'folder_id' => $file['folder_id'] === null ? '' : (string)$file['folder_id'],
         'folder_name' => $file['folder_name'] ?? 'Tệp của tôi',
     ];
 }
