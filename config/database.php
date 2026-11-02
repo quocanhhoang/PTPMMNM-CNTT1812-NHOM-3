@@ -3,7 +3,7 @@
     $port = "5432";
     $dbname = "fileSharing";
     $user = "postgres";
-    $password = "16092006";
+    $password = "anhanh1";
 
     $conn = pg_connect(
         "host=$host port=$port dbname=$dbname user=$user password=$password"
