@@ -24,11 +24,16 @@
     const notificationList = $("#notification-list");
     const notificationCount = $("#notification-count");
     const notificationIndicator = $("#notification-indicator");
+    const profileMenuToggle = $("#profile-menu-toggle");
+    const profileMenu = $("#profile-menu");
     const notifications = [];
     let toastTimer;
     let csrfToken = "";
     let authMode = "login";
     let selectedUpload = null;
+    let storageUsedBytes = 0;
+    let storageQuotaBytes = 0;
+    let defaultUploadAccess = "public";
     let activeFileId = null;
     let activeLinkId = null;
     let files = [];
@@ -78,6 +83,7 @@
     const applyTheme = (theme) => {
         const isDark = theme === "dark";
         document.documentElement.dataset.theme = theme;
+        $("#setting-theme").value = theme;
         themeToggle.setAttribute("aria-pressed", String(isDark));
         themeToggle.setAttribute("aria-label", `Chuyển sang chế độ ${isDark ? "sáng" : "tối"}`);
         themeToggle.title = `Chuyển sang chế độ ${isDark ? "sáng" : "tối"}`;
@@ -88,18 +94,31 @@
     try {
         const storedTheme = localStorage.getItem("fileshare-theme");
         if (storedTheme === "dark" || storedTheme === "light") savedTheme = storedTheme;
+        const storedAccess = localStorage.getItem("fileshare-default-access");
+        if (storedAccess === "public" || storedAccess === "private") defaultUploadAccess = storedAccess;
     } catch (error) {
-        // The visual preference remains usable even when storage is disabled.
+        showToast("Không thể đọc tùy chọn đã lưu trên trình duyệt này.");
     }
+    $("#setting-default-access").value = defaultUploadAccess;
     applyTheme(savedTheme);
+    const savePreference = (key, value) => {
+        try {
+            localStorage.setItem(key, value);
+            return true;
+        } catch (error) {
+            showToast("Không thể lưu cài đặt trên trình duyệt này.");
+            return false;
+        }
+    };
     themeToggle.addEventListener("click", () => {
         const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
         applyTheme(theme);
-        try {
-            localStorage.setItem("fileshare-theme", theme);
-        } catch (error) {
-            showToast("Không thể lưu tùy chọn giao diện trên trình duyệt này.");
-        }
+        savePreference("fileshare-theme", theme);
+    });
+    $("#setting-theme").addEventListener("change", (event) => {
+        const theme = event.currentTarget.value;
+        applyTheme(theme);
+        savePreference("fileshare-theme", theme);
     });
 
     const formatSize = (bytes) => {
@@ -123,7 +142,7 @@
 
     const fileLinks = (fileId) => links.filter((link) => link.file_id === fileId);
     const activeLink = (fileId) => fileLinks(fileId)
-        .filter((link) => link.status === "active" && link.access === "public")
+        .filter((link) => link.status === "active" || link.status === "private")
         .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 
     const activateView = (viewName) => {
@@ -136,14 +155,19 @@
             files: "Tệp của tôi",
             upload: "Tải tệp lên",
             shared: "Liên kết chia sẻ",
+            upgrade: "Nâng cấp gói",
+            personal: "Thông tin cá nhân",
+            settings: "Cài đặt người dùng",
         }[viewName] || "Tổng quan";
+        profileMenu.hidden = true;
+        profileMenuToggle.setAttribute("aria-expanded", "false");
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const makeFileRow = (file) => {
         const row = document.createElement("tr");
         const publicLink = activeLink(file.id);
-        const access = file.access_type === "public" && publicLink ? "public" : "private";
+        const access = publicLink?.access === "public" ? "public" : "private";
         const shareStatus = !file.share_code
             ? "none"
             : file.link_status === "active"
@@ -240,24 +264,26 @@
         expired: "Hết hạn",
         revoked: "Đã thu hồi",
         limit_reached: "Hết lượt tải",
-        private: "Riêng tư",
+        private: "Riêng tư · cần quyền",
     })[status] || "Không khả dụng";
 
     const renderLinks = () => {
         const linkRows = $("#link-rows");
         linkRows.replaceChildren();
-        links.filter((link) => link.status === "active")
+        links.filter((link) => link.status === "active" || link.status === "private")
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
             .forEach((link) => {
             const file = files.find((entry) => entry.id === link.file_id);
             const row = document.createElement("tr");
             row.dataset.linkId = link.id;
-            row.innerHTML = `<td><strong class="link-file-name"></strong><a class="link-open" target="_blank" rel="noopener noreferrer"></a></td><td><span class="access-badge public"><i></i></span></td><td></td><td></td><td></td><td><button class="row-menu copy-link-row" type="button">Sao chép</button><button class="row-menu revoke-link-row" type="button">Thu hồi</button></td>`;
+            row.innerHTML = `<td><strong class="link-file-name"></strong><a class="link-open" target="_blank" rel="noopener noreferrer"></a></td><td><span class="access-badge ${link.access === "public" ? "public" : "private"}"><i></i></span></td><td></td><td></td><td></td><td><button class="row-menu copy-link-row" type="button">Sao chép</button><button class="row-menu revoke-link-row" type="button">Thu hồi</button></td>`;
             $(".link-file-name", row).textContent = file?.name || "Tệp đã xóa";
             const openLink = $(".link-open", row);
             openLink.href = link.url;
             openLink.textContent = link.url;
-            $(".access-badge", row).lastChild.textContent = linkStatusLabel(link.status);
+            $(".access-badge", row).lastChild.textContent = link.access === "private"
+                ? "Riêng tư · cần quyền"
+                : linkStatusLabel(link.status);
             row.cells[2].textContent = link.max_downloads === null ? `${link.downloads} lượt · không giới hạn` : `${link.downloads} / ${link.max_downloads}`;
             row.cells[3].textContent = formatDate(link.expires_at);
             row.cells[4].textContent = link.password_protected ? "Có" : "Không";
@@ -287,6 +313,29 @@
         const capacity = document.createElement("small");
         capacity.textContent = `GB / ${(quota / 1024 ** 3).toFixed(0)} GB`;
         $(".hero-capacity strong").append(capacity);
+        $("#personal-storage-used").textContent = `${(used / 1024 ** 3).toFixed(2)} GB`;
+        $("#personal-storage-quota").textContent = `${(quota / 1024 ** 3).toFixed(quota % 1024 ** 3 ? 2 : 0)} GB`;
+    };
+
+    const updatePlanOptions = () => {
+        const quotaGiB = storageQuotaBytes / 1024 ** 3;
+        $("#current-plan-label").textContent = `${quotaGiB.toFixed(quotaGiB % 1 ? 2 : 0)} GB`;
+        $$("#storage-plans .plan-card").forEach((card) => {
+            const planGiB = Number(card.dataset.planGb);
+            const button = $(".plan-action", card);
+            const status = $(".plan-status", card);
+            const isCurrent = storageQuotaBytes === planGiB * 1024 ** 3;
+            const isSmaller = planGiB * 1024 ** 3 < storageQuotaBytes;
+            button.disabled = isCurrent || isSmaller;
+            button.textContent = isCurrent
+                ? "Gói hiện tại"
+                : isSmaller
+                    ? "Thấp hơn gói hiện tại"
+                    : `Nâng cấp lên ${planGiB} GB`;
+            status.hidden = !isCurrent;
+            status.textContent = isCurrent ? "Đang sử dụng" : "";
+            card.classList.toggle("plan-card-current", isCurrent);
+        });
     };
 
     const buildNotifications = () => {
@@ -401,11 +450,16 @@
         renderFiles();
         renderLinks();
         const used = databaseFiles.files.reduce((total, file) => total + (file.missing ? 0 : file.file_size), 0);
+        storageUsedBytes = used;
+        storageQuotaBytes = databaseFiles.quota;
+        const availableLinks = links.filter((link) => link.status === "active" || link.status === "private").length;
         updateStorage(used, databaseFiles.quota);
+        updatePlanOptions();
+        $("#personal-file-count").textContent = String(files.length);
         $("#stat-files").textContent = String(files.length);
-        $("#stat-links").textContent = String(links.filter((link) => link.status === "active").length);
+        $("#stat-links").textContent = String(availableLinks);
         $("#stat-downloads").textContent = String(files.reduce((total, file) => total + file.downloads, 0));
-        $("#hero-links-count").textContent = `${links.filter((link) => link.status === "active").length} liên kết`;
+        $("#hero-links-count").textContent = `${availableLinks} liên kết`;
         buildNotifications();
     };
 
@@ -493,6 +547,9 @@
         $("#profile-name").textContent = user.name;
         $("#profile-email").textContent = user.email;
         $(".avatar", $("#profile-card")).textContent = [...user.name][0].toLocaleUpperCase("vi");
+        $("#personal-avatar").textContent = [...user.name][0].toLocaleUpperCase("vi");
+        $("#personal-name").textContent = user.name;
+        $("#personal-email").textContent = user.email;
         $("#welcome-title").firstChild.textContent = `Xin chào, ${user.name} `;
     };
 
@@ -509,7 +566,7 @@
             history.replaceChildren();
             if (data.permissions.length === 0) {
                 const empty = document.createElement("li");
-                empty.textContent = "Chưa cấp quyền tải tệp này cho tài khoản nào.";
+                empty.textContent = "Chưa có người nào được cấp quyền tải tệp này.";
                 history.append(empty);
                 return;
             }
@@ -537,7 +594,7 @@
         activeFileId = file.id;
         const [iconType, iconLetter] = getIconType(file.name);
         const share = activeLink(file.id);
-        const selectedLink = share || fileLinks(file.id).find((item) => item.status === "active") || null;
+        const selectedLink = share || fileLinks(file.id).find((item) => item.status === "active" || item.status === "private") || null;
         activeLinkId = selectedLink?.id || null;
         $("#detail-file-name").textContent = file.name;
         $("#detail-file-meta").textContent = `Tải lên ngày ${formatDate(file.created_at)} · ${formatSize(file.size)} · ${file.folder_name}`;
@@ -549,14 +606,14 @@
         $("#share-url").textContent = selectedLink?.url || "Chưa có liên kết còn hiệu lực";
         $("#permission-grant-submit").disabled = false;
         $("#share-description").textContent = selectedLink
-            ? `${selectedLink.downloads} lượt tải · Hết hạn ${formatDate(selectedLink.expires_at)}${selectedLink.password_protected ? " · Có mật khẩu" : ""}`
+            ? `${selectedLink.access === "private" ? "Chỉ tài khoản được cấp quyền mới tải được. " : ""}${selectedLink.downloads} lượt tải · Hết hạn ${formatDate(selectedLink.expires_at)}${selectedLink.password_protected ? " · Có mật khẩu" : ""}`
             : "Tạo liên kết mới để bắt đầu chia sẻ tệp.";
         $(".link-setting-row:nth-of-type(1) small").textContent = selectedLink ? linkStatusLabel(selectedLink.status) : "Chưa tạo liên kết";
         $(".link-setting-row:nth-of-type(2) small").textContent = selectedLink
             ? `${selectedLink.downloads} / ${selectedLink.max_downloads ?? "∞"} lượt tải`
             : "Chưa giới hạn";
         $(".link-setting-row:nth-of-type(3) small").textContent = selectedLink ? formatDate(selectedLink.expires_at) : "—";
-        $("#revoke-link").disabled = !selectedLink || selectedLink.status !== "active";
+        $("#revoke-link").disabled = !selectedLink || !["active", "private"].includes(selectedLink.status);
         loadPermissionHistory(file.id);
         activateView("shared");
     };
@@ -567,6 +624,42 @@
     };
 
     navLinks.forEach((link) => link.addEventListener("click", () => activateView(link.dataset.view)));
+    profileMenuToggle.addEventListener("click", () => {
+        const isOpen = profileMenu.hidden;
+        profileMenu.hidden = !isOpen;
+        profileMenuToggle.setAttribute("aria-expanded", String(isOpen));
+        if (isOpen) $('[role="menuitem"]', profileMenu).focus();
+    });
+    profileMenu.addEventListener("click", (event) => {
+        const action = event.target.closest("[data-profile-view]");
+        if (action) activateView(action.dataset.profileView);
+    });
+    $$("[data-profile-view]").forEach((action) => {
+        if (profileMenu.contains(action)) return;
+        action.addEventListener("click", () => activateView(action.dataset.profileView));
+    });
+    $(".storage-upgrade").addEventListener("click", () => activateView("upgrade"));
+    $("#back-from-upgrade").addEventListener("click", () => activateView("dashboard"));
+    $("#storage-plans").addEventListener("click", async (event) => {
+        const button = event.target.closest(".plan-action");
+        if (!button || button.disabled) return;
+        const planGb = Number(button.dataset.planGb);
+        $$("#storage-plans .plan-action").forEach((planButton) => {
+            planButton.disabled = true;
+        });
+        try {
+            const response = await requestPath("api/upgrade.php", {
+                method: "POST",
+                body: { storage_gb: planGb },
+            });
+            const result = await response.json();
+            await loadData();
+            showToast(result.message);
+        } catch (error) {
+            updatePlanOptions();
+            showToast(error.message);
+        }
+    });
     $$("[data-open-upload]").forEach((button) => button.addEventListener("click", () => activateView("upload")));
     $$("[data-open-files]").forEach((button) => button.addEventListener("click", () => activateView("files")));
     $$("[data-open-shared]").forEach((button) => button.addEventListener("click", () => activateView("shared")));
@@ -702,7 +795,9 @@
             showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–100 MB.");
             return false;
         }
-        if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
+        if (storageQuotaBytes > 0 && storageUsedBytes + file.size > storageQuotaBytes) {
+            selectedUpload = null;
+            selectedFile.hidden = true;
             showToast("Tệp vượt quá dung lượng còn trống trong tài khoản.");
             return false;
         }
@@ -719,30 +814,7 @@
     fileInput.addEventListener("change", () => {
         const [file] = fileInput.files;
         if (!file) return;
-        const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
-        const allowedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
-        if (!allowedExtensions.includes(extension)) {
-            selectedUpload = null;
-            selectedFile.hidden = true;
-            fileInput.value = "";
-            showToast("Định dạng tệp này không được hỗ trợ.");
-            return;
-        }
-        if (file.size < 1 || file.size > 100 * 1024 * 1024) {
-            selectedUpload = null;
-            selectedFile.hidden = true;
-            fileInput.value = "";
-            showToast("Kích thước tệp phải từ 1 byte đến 100 MB.");
-            return;
-        }
-        if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
-            selectedUpload = null;
-            selectedFile.hidden = true;
-            fileInput.value = "";
-            showToast("Tệp vượt quá dung lượng còn trống trong tài khoản.");
-            return;
-        }
-        setSelectedFile(file);
+        if (!setSelectedFile(file)) fileInput.value = "";
     });
     const dropzone = $("#dropzone");
     ["dragenter", "dragover"].forEach((name) => dropzone.addEventListener(name, (event) => {
@@ -754,12 +826,25 @@
         dropzone.classList.remove("dragover");
     }));
     dropzone.addEventListener("drop", (event) => {
+        event.preventDefault();
         const [file] = event.dataTransfer.files;
         if (file) setSelectedFile(file);
     });
+    const applyUploadAccess = (access) => {
+        $$('input[name="access"]').forEach((radio) => {
+            radio.checked = radio.value === access;
+            $$(".radio-card").forEach((card) => card.classList.toggle("selected", card.contains(radio) && radio.checked));
+        });
+    };
+    applyUploadAccess(defaultUploadAccess);
     $$('input[name="access"]').forEach((radio) => radio.addEventListener("change", () => {
         $$(".radio-card").forEach((card) => card.classList.toggle("selected", card.contains(radio) && radio.checked));
     }));
+    $("#setting-default-access").addEventListener("change", (event) => {
+        defaultUploadAccess = event.currentTarget.value;
+        savePreference("fileshare-default-access", defaultUploadAccess);
+        applyUploadAccess(defaultUploadAccess);
+    });
     $("#upload-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const uploadForm = event.currentTarget;
@@ -782,6 +867,7 @@
             await loadData();
             selectedUpload = null;
             uploadForm.reset();
+            applyUploadAccess(defaultUploadAccess);
             selectedFile.hidden = true;
             showToast(`Đã tải "${data.file.file_name}" và tạo liên kết chia sẻ.`);
             activateView("files");
@@ -855,7 +941,6 @@
                 method: "POST",
                 body: {
                     file_id: activeFileId,
-                    access: "public",
                     expiry_days: expiryDays,
                     max_downloads: maxDownloads,
                     password,
@@ -916,7 +1001,7 @@
             if (authOverlay.hidden) showToast(error.message);
         }
     });
-    $("#profile-card").addEventListener("click", async () => {
+    $("#logout-button").addEventListener("click", async () => {
         try {
             const response = await request("logout", { method: "POST", body: {} });
             const data = await response.json();
@@ -926,6 +1011,8 @@
             links = [];
             allRows.replaceChildren();
             recentRows.replaceChildren();
+            profileMenu.hidden = true;
+            profileMenuToggle.setAttribute("aria-expanded", "false");
             showAuth("login");
         } catch (error) {
             showToast(error.message);
@@ -933,10 +1020,21 @@
     });
 
     document.addEventListener("click", (event) => {
+        if (!event.target.closest(".profile-area")) {
+            profileMenu.hidden = true;
+            profileMenuToggle.setAttribute("aria-expanded", "false");
+        }
         const helpLink = event.target.closest("#help-link");
         if (helpLink) {
             event.preventDefault();
             showToast("Trung tâm trợ giúp sẽ sớm có mặt.");
+        }
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !profileMenu.hidden) {
+            profileMenu.hidden = true;
+            profileMenuToggle.setAttribute("aria-expanded", "false");
+            profileMenuToggle.focus();
         }
     });
 

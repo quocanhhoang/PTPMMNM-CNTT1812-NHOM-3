@@ -78,21 +78,18 @@ while ($file = pg_fetch_assoc($result)) {
         }
     }
 
-    $active = $file['is_link_active'] === 't'
-        && $file['access_type'] === 'public'
-        && ($file['expires_at'] === null || strtotime($file['expires_at']) > time())
-        && ($file['download_limit'] === null || (int)$file['download_count'] < (int)$file['download_limit']);
-    if ($active) {
-        $linkStatus = 'active';
-    } elseif ($file['is_link_active'] !== 't') {
+    if ($file['is_link_active'] !== 't') {
         $linkStatus = 'revoked';
-    } elseif ($file['access_type'] !== 'public') {
-        $linkStatus = 'private';
     } elseif ($file['expires_at'] !== null && strtotime($file['expires_at']) <= time()) {
         $linkStatus = 'expired';
-    } else {
+    } elseif ($file['download_limit'] !== null && (int)$file['download_count'] >= (int)$file['download_limit']) {
         $linkStatus = 'limit_reached';
+    } elseif ($file['access_type'] === 'private') {
+        $linkStatus = 'private';
+    } else {
+        $linkStatus = 'active';
     }
+    $available = in_array($linkStatus, ['active', 'private'], true);
     $files[] = [
         'id' => (int) $file['id'],
         'file_name' => $file['file_name'],
@@ -105,7 +102,7 @@ while ($file = pg_fetch_assoc($result)) {
         'download_limit' => $file['download_limit'] === null ? null : (int) $file['download_limit'],
         'download_count' => (int) $file['download_count'],
         'expires_at' => $file['expires_at'],
-        'is_link_active' => $active,
+        'is_link_active' => $available,
         'link_status' => $linkStatus,
         'password_protected' => $file['link_password_hash'] !== null,
         'missing' => $missing,

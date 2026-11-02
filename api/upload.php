@@ -6,14 +6,38 @@ require_method('POST');
 $userId = require_authenticated_user();
 require_csrf_token();
 
+function upload_ini_size_bytes(string $value): int
+{
+    if (!preg_match('/^\s*(\d+(?:\.\d+)?)\s*([KMG]?)B?\s*$/i', $value, $matches)) {
+        return 0;
+    }
+
+    $multiplier = match (strtoupper($matches[2])) {
+        'K' => 1024,
+        'M' => 1024 ** 2,
+        'G' => 1024 ** 3,
+        default => 1,
+    };
+
+    return (int)((float)$matches[1] * $multiplier);
+}
+
 $upload = $_FILES['file'] ?? null;
 if (!is_array($upload) || !isset($upload['error'], $upload['tmp_name'], $upload['size'])) {
+    $contentLength = filter_var($_SERVER['CONTENT_LENGTH'] ?? 0, FILTER_VALIDATE_INT);
+    $postMaxSize = upload_ini_size_bytes((string)ini_get('post_max_size'));
+    if ($contentLength !== false && $contentLength > 0 && $postMaxSize > 0 && $contentLength > $postMaxSize) {
+        json_response([
+            'error' => 'Tệp vượt quá post_max_size của PHP (' . ini_get('post_max_size') . '). Hãy tăng post_max_size và upload_max_filesize, sau đó khởi động lại PHP.',
+        ], 413);
+    }
     json_response(['error' => 'Vui lòng chọn tệp cần tải lên.'], 400);
 }
 
 if ($upload['error'] !== UPLOAD_ERR_OK) {
     $message = match ($upload['error']) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'Tệp vượt quá giới hạn tải lên của máy chủ.',
+        UPLOAD_ERR_INI_SIZE => 'Tệp vượt quá upload_max_filesize của PHP (' . ini_get('upload_max_filesize') . '). Hãy tăng upload_max_filesize và post_max_size, sau đó khởi động lại PHP.',
+        UPLOAD_ERR_FORM_SIZE => 'Tệp vượt quá giới hạn tải lên của biểu mẫu.',
         UPLOAD_ERR_PARTIAL => 'Tệp chỉ được tải lên một phần. Vui lòng thử lại.',
         UPLOAD_ERR_NO_FILE => 'Vui lòng chọn tệp cần tải lên.',
         default => 'Không thể nhận tệp tải lên.',
@@ -170,6 +194,41 @@ if (!$transactionStarted) {
 }
 
 try {
+    $accountLock = pg_query_params(
+        $conn,
+        'SELECT pg_advisory_xact_lock($1::bigint)',
+        [FILESHARE_CURRENT_USER_ID]
+    );
+    if ($accountLock === false) {
+        throw new RuntimeException(pg_last_error($conn));
+    }
+    $accountQuota = pg_query_params(
+        $conn,
+        'SELECT storage_limit FROM public.users WHERE id = $1',
+        [FILESHARE_CURRENT_USER_ID]
+    );
+    if ($accountQuota === false) {
+        throw new RuntimeException(pg_last_error($conn));
+    }
+    $account = pg_fetch_assoc($accountQuota);
+    if ($account === false) {
+        throw new RuntimeException('Authenticated account is missing from public.users.');
+    }
+    $storedBytes = pg_query_params(
+        $conn,
+        'SELECT COALESCE(SUM(file_size), 0)::bigint
+         FROM public.files
+         WHERE owner_id = $1 AND deleted_at IS NULL',
+        [FILESHARE_CURRENT_USER_ID]
+    );
+    if ($storedBytes === false) {
+        throw new RuntimeException(pg_last_error($conn));
+    }
+    $usedBytes = (int)pg_fetch_result($storedBytes, 0, 0);
+    if ($usedBytes + $fileSize > (int)$account['storage_limit']) {
+        throw new DomainException('Không đủ dung lượng lưu trữ cho tệp này. Hãy xóa bớt tệp hoặc nâng cấp gói.');
+    }
+
     $insertedFile = pg_query_params(
         $conn,
         'INSERT INTO files
@@ -219,6 +278,12 @@ try {
     if (!pg_query($conn, 'COMMIT')) {
         throw new RuntimeException(pg_last_error($conn));
     }
+} catch (DomainException $error) {
+    pg_query($conn, 'ROLLBACK');
+    if (is_file($absolutePath)) {
+        unlink($absolutePath);
+    }
+    json_response(['error' => $error->getMessage()], 413);
 } catch (Throwable $error) {
     pg_query($conn, 'ROLLBACK');
     if (is_file($absolutePath)) {

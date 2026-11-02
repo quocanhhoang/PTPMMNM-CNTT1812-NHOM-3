@@ -3,17 +3,28 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
-function folder_database_error(PgSql\Result $result, string $operation): never
+function folder_database_error(PgSql\Result|false $result, string $operation): never
 {
-    $sqlState = pg_result_error_field($result, PGSQL_DIAG_SQLSTATE);
-    error_log($operation . ': ' . pg_result_error($result));
+    global $conn;
+    $errorMessage = $result === false ? pg_last_error($conn) : pg_result_error($result);
+    $sqlState = $result === false ? null : pg_result_error_field($result, PGSQL_DIAG_SQLSTATE);
+    error_log($operation . ': ' . $errorMessage);
 
-    if ($sqlState === '42P01') {
+    if ($sqlState === '42P01' || str_contains($errorMessage, 'relation "public.folders" does not exist')) {
         json_response(['error' => 'Chưa khởi tạo bảng thư mục. Hãy chạy migration database/migrations/001_accounts_folders_quota.sql rồi tải lại trang.'], 500);
+    }
+    if (
+        $sqlState === '42703'
+        || str_contains($errorMessage, 'column "parent_id"')
+        || str_contains($errorMessage, 'column "updated_at"')
+    ) {
+        json_response([
+            'error' => 'Cấu trúc bảng thư mục chưa được cập nhật. Hãy chạy migration database/migrations/004_folder_hierarchy.sql bằng tài khoản PostgreSQL quản trị rồi tải lại trang.',
+        ], 500);
     }
     if ($sqlState === '42501') {
         json_response([
-            'error' => 'Tài khoản PostgreSQL của ứng dụng chưa đủ quyền SELECT, INSERT, UPDATE, DELETE trên public.folders hoặc USAGE trên sequence public.folders_id_seq; xem hướng dẫn trong README.md.',
+            'error' => 'Tài khoản PostgreSQL của ứng dụng chưa đủ quyền trên public.folders hoặc sequence public.folders_id_seq; xem hướng dẫn trong README.md.',
         ], 500);
     }
 

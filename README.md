@@ -21,7 +21,13 @@
 - Chạy từ thư mục dự án bằng `php -S localhost:8000`.
 - Mở `http://localhost:8000`. Tạo tài khoản mới hoặc đăng nhập; mật khẩu tối thiểu 10 ký tự.
 - Mỗi tài khoản có thư mục mặc định và hạn mức 10 GB. Có thể đặt `FILESHARE_DATA_DIR` để chọn thư mục dữ liệu riêng nằm ngoài document root.
-- Tệp được giới hạn 100 MB mặc định. Nếu dùng PHP built-in server, cấu hình `upload_max_filesize` và `post_max_size` trong `php.ini` đủ lớn (ví dụ 100M và 105M).
+- Trong mục **Nâng cấp gói**, người dùng có thể chuyển lên tổng hạn mức 5 GB, 10 GB (150.000đ) hoặc 100 GB (5.000.000đ). Chọn gói có dung lượng cao hơn sẽ cập nhật ngay giới hạn lưu trữ; thanh toán chưa được tích hợp và hiện chưa thu phí. Máy chủ cũng kiểm tra quota trước khi lưu tệp.
+- Menu ba chấm cạnh tài khoản ở cuối thanh bên mở **Thông tin cá nhân** (tên, email, dung lượng và số tệp) hoặc **Cài đặt người dùng**. Cài đặt giao diện và quyền chia sẻ mặc định được lưu trên trình duyệt hiện tại.
+- Nếu nâng cấp báo thiếu quyền PostgreSQL, cấp quyền cập nhật hạn mức cho đúng role `DB_USER` (ví dụ role `nhat`):
+  ```sh
+  sudo -u postgres psql -d fileSharing -v ON_ERROR_STOP=1 -c "GRANT UPDATE ON TABLE public.users TO nhat;"
+  ```
+- Tệp được giới hạn 100 MB mặc định. Nếu dùng PHP built-in server, chạy `php -d upload_max_filesize=100M -d post_max_size=105M -S localhost:8000`; nếu dùng Apache/PHP-FPM, đặt hai giá trị này trong cấu hình PHP và khởi động lại dịch vụ.
 - Chỉ chấp nhận PDF, TXT, CSV, PNG, JPG/JPEG, GIF và WEBP; MIME thực tế được xác minh phía máy chủ.
 - Metadata người dùng/tệp/liên kết được lưu trong PostgreSQL. Nội dung tải lên nằm trong `FILESHARE_STORAGE_DIR/<user_id>/<folder_id>/` với tên ngẫu nhiên; ứng dụng từ chối storage nằm trong document root, giới hạn quyền thư mục ở `0700` và quyền tệp ở `0600`. Cần bảo đảm tài khoản chạy PHP có quyền ghi `FILESHARE_STORAGE_DIR`. Mỗi lần tải, máy chủ kiểm tra trạng thái liên kết; với tệp riêng tư, chỉ chủ sở hữu hoặc người có bản ghi trong `file_permissions` được tải. Dữ liệu phụ trợ JSON và khóa đồng bộ dùng `FILESHARE_DATA_DIR` (mặc định cũng nằm ngoài document root).
 - Khi triển khai sau reverse proxy hoặc dùng domain cố định, đặt `FILESHARE_BASE_URL` (ví dụ `https://files.example.com`) để liên kết chia sẻ luôn trỏ đúng địa chỉ HTTPS.
@@ -29,15 +35,16 @@
 - Đăng ký ghi trực tiếp vào `public.users`: `username` được tạo từ phần trước `@` của email kèm hậu tố ngẫu nhiên, tên lưu vào `full_name`, email lưu vào `email`, hạn mức lưu vào `storage_limit`, và mật khẩu chỉ lưu dưới dạng `password_hash()`. Đăng nhập chỉ chấp nhận tài khoản có `status = 'active'`. Các API quản lý tệp cũng lọc theo ID tài khoản đang đăng nhập thay vì ID chủ sở hữu cố định.
 - Liên kết công khai được lưu trên bản ghi `public.files`, gồm mã chia sẻ, thời hạn và giới hạn tải. Các migration `001_file_link_password.sql` và `002_link_password.sql` bổ sung hỗ trợ mật khẩu liên kết; ứng dụng chỉ lưu password hash và URL tải qua `download.php` để kiểm tra mật khẩu, thời hạn và lượt tải.
 - Chạy các migration dưới đây bằng role có quyền ALTER TABLE theo đúng thứ tự liệt kê. Hai migration thư mục tạo cấu trúc thư mục phân cấp, tạo thư mục mặc định cho tài khoản hiện có và chuyển tệp cũ vào đó:
-  `001_accounts_folders_quota.sql`, `001_file_link_password.sql`, `002_file_cleanup.sql`, `002_link_password.sql`, `003_admin_notifications.sql`, `003_file_folders.sql`.
+  `001_accounts_folders_quota.sql`, `001_file_link_password.sql`, `002_file_cleanup.sql`, `002_link_password.sql`, `003_admin_notifications.sql`, `003_file_folders.sql`, `004_folder_hierarchy.sql`.
 - Với cấu hình hiện tại là role `nhat`, chạy lệnh dưới đây trong WSL tại thư mục dự án để cài migration và cấp quyền cần thiết:
   ```sh
-  sudo -u postgres psql -d fileSharing -v ON_ERROR_STOP=1 -f database/migrations/001_accounts_folders_quota.sql -f database/migrations/001_file_link_password.sql -f database/migrations/002_file_cleanup.sql -f database/migrations/002_link_password.sql -f database/migrations/003_admin_notifications.sql -f database/migrations/003_file_folders.sql -c "GRANT SELECT, INSERT, UPDATE ON public.users TO nhat; GRANT SELECT, INSERT, UPDATE, DELETE ON public.folders TO nhat; GRANT SELECT, INSERT, UPDATE, DELETE ON public.files TO nhat; GRANT SELECT, INSERT ON public.activity_logs, public.file_permissions TO nhat; GRANT SELECT, INSERT, UPDATE ON public.notifications TO nhat; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nhat;"
+  sudo -u postgres psql -d fileSharing -v ON_ERROR_STOP=1 -f database/migrations/001_accounts_folders_quota.sql -f database/migrations/001_file_link_password.sql -f database/migrations/002_file_cleanup.sql -f database/migrations/002_link_password.sql -f database/migrations/003_admin_notifications.sql -f database/migrations/003_file_folders.sql -f database/migrations/004_folder_hierarchy.sql -c "GRANT SELECT, INSERT, UPDATE ON public.users TO nhat; GRANT SELECT, INSERT, UPDATE, DELETE ON public.folders TO nhat; GRANT SELECT, INSERT, UPDATE, DELETE ON public.files TO nhat; GRANT SELECT, INSERT ON public.activity_logs, public.file_permissions TO nhat; GRANT SELECT, INSERT, UPDATE ON public.notifications TO nhat; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nhat;"
   ```
   Nếu `DB_USER` khác `nhat`, thay `nhat` bằng đúng role trong `config/database.local.php`. Tài khoản `postgres` cần quyền sở hữu/cấp quyền các bảng.
 - Trong mục **Tệp của tôi**, chọn **+ Thư mục** để thêm thư mục. Thư mục sẽ xuất hiện trong bộ chọn **Thư mục lưu** khi tải tệp lên và trong bộ lọc danh sách tệp.
 - Trong giao diện, tải tệp lên hoặc chọn tệp trong **Tệp của tôi**, mở **Liên kết chia sẻ** rồi chọn **+ Tạo liên kết**. Có thể đặt số ngày hiệu lực (1–3650), giới hạn lượt tải (để trống nếu không giới hạn) và mật khẩu tùy chọn. Danh sách hiển thị các liên kết còn hiệu lực, số lượt đã dùng và ngày hết hạn; mỗi tệp có một liên kết hiện hành, việc tạo lại liên kết sẽ vô hiệu hóa URL cũ.
 - Trong **Tệp của tôi**, tìm theo tên tệp/thư mục và lọc theo trạng thái liên kết (đang chia sẻ, riêng tư, hết hạn/đã thu hồi hoặc chưa chia sẻ). **Xuất báo cáo** tải lịch sử từ `activity_logs` thành CSV; lượt tải thành công cũng được ghi nhận. Tệp có metadata nhưng nội dung trên ổ đĩa bị mất sẽ được đánh dấu/cảnh báo trong danh sách và lịch sử. Schema nhật ký hiện tại không lưu địa chỉ IP nên cột IP trong báo cáo sẽ để trống.
+- Liên kết của tệp **Riêng tư** vẫn có thể sao chép và gửi cho người nhận, nhưng URL không thay thế quyền truy cập: người nhận phải đăng nhập đúng tài khoản đã được chủ sở hữu cấp quyền. Người chưa đăng nhập nhận HTTP 401; tài khoản chưa được cấp quyền nhận HTTP 403. Khi tạo lại liên kết, ứng dụng giữ nguyên chế độ riêng tư của tệp.
 
 ## Dọn tệp không còn liên kết hiệu lực
 

@@ -47,19 +47,17 @@ try {
         $connection,
         'UPDATE public.files
          SET share_code = $1,
-             access_type = $2,
-             download_limit = $3,
+             download_limit = $2,
              download_count = 0,
-             expires_at = CURRENT_TIMESTAMP + ($4::integer * INTERVAL \'1 day\'),
-             link_password_hash = $5,
+             expires_at = CURRENT_TIMESTAMP + ($3::integer * INTERVAL \'1 day\'),
+             link_password_hash = $4,
              is_link_active = TRUE,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $6 AND owner_id = $7 AND deleted_at IS NULL
+         WHERE id = $5 AND owner_id = $6 AND deleted_at IS NULL
          RETURNING id, file_name, share_code, access_type, download_limit, download_count,
                    expires_at, is_link_active, link_password_hash, created_at',
         [
             $shareCode,
-            'public',
             $downloadLimit,
             $expiryDays,
             $passwordHash,
@@ -105,7 +103,7 @@ json_response([
         'max_downloads' => $file['download_limit'] === null ? null : (int)$file['download_limit'],
         'downloads' => (int)$file['download_count'],
         'expires_at' => $file['expires_at'],
-        'status' => 'active',
+        'status' => $file['access_type'] === 'private' ? 'private' : 'active',
         'password_protected' => $file['link_password_hash'] !== null,
         'created_at' => $file['created_at'],
     ],
