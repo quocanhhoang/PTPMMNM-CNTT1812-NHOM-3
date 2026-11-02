@@ -12,6 +12,7 @@
     const fileNameInput = document.getElementById("file-name");
     const selectedFile = document.getElementById("selected-file");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const maxUploadBytes = Number(document.querySelector('meta[name="max-upload-bytes"]').content);
     let toastTimer;
     let selectedUpload = null;
     let selectedFileId = null;
@@ -91,12 +92,12 @@
         panels.forEach((panel) => panel.classList.toggle("active", panel === target));
         navLinks.forEach((link) => link.classList.toggle("active", link.dataset.view === viewName));
         breadcrumb.textContent = {
-            dashboard: "Tổng quan",
+            dashboard: "Chung",
             files: "Tệp của tôi",
             upload: "Tải tệp lên",
             shared: "Chi tiết tệp",
             folders: "Thư mục",
-        }[viewName] || "Tổng quan";
+        }[viewName] || "Chung";
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
@@ -144,12 +145,29 @@
         if (file.is_missing) access.classList.add("missing");
 
         const menuCell = document.createElement("td");
+        const menuWrap = document.createElement("div");
+        menuWrap.className = "file-action-menu-wrap";
         const menu = document.createElement("button");
         menu.className = "row-menu";
         menu.type = "button";
         menu.setAttribute("aria-label", `Tùy chọn ${file.file_name}`);
+        menu.setAttribute("aria-expanded", "false");
         menu.textContent = "···";
-        menuCell.append(menu);
+        const actions = document.createElement("div");
+        actions.className = "file-action-menu";
+        actions.hidden = true;
+        const share = document.createElement("button");
+        share.type = "button";
+        share.dataset.fileAction = "share";
+        share.textContent = "Chia sẻ";
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.dataset.fileAction = "delete";
+        remove.className = "file-action-delete";
+        remove.textContent = "Xóa";
+        actions.append(share, remove);
+        menuWrap.append(menu, actions);
+        menuCell.append(menuWrap);
 
         const accessCell = document.createElement("td");
         accessCell.append(access);
@@ -161,6 +179,58 @@
             menuCell
         );
         return row;
+    };
+
+    const renderSharedFiles = (sharedFiles) => {
+        const rows = document.getElementById("shared-file-rows");
+        const empty = document.getElementById("shared-files-empty");
+        rows.replaceChildren();
+        empty.hidden = sharedFiles.length > 0;
+        if (sharedFiles.length === 0) return;
+
+        sharedFiles.forEach((file) => {
+            const row = document.createElement("tr");
+            const name = makeCell(file.file_name);
+            name.className = "shared-file-name";
+            const sharedWith = [
+                file.recipient_names,
+                file.is_link_active ? "Liên kết công khai" : "",
+            ].filter(Boolean).join(" · ") || "Không có người nhận";
+            const sharedAt = makeCell(new Intl.DateTimeFormat("vi-VN").format(new Date(file.shared_at)));
+            const downloads = makeCell(`${file.download_count} lượt`);
+            const action = document.createElement("td");
+            if (file.is_missing) {
+                action.textContent = "Tệp không khả dụng";
+            } else if (file.is_link_active) {
+                const copy = document.createElement("button");
+                copy.className = "secondary-button shared-download";
+                copy.type = "button";
+                copy.dataset.copyShareLink = file.share_code;
+                copy.textContent = "Sao chép liên kết";
+                action.append(copy);
+            } else {
+                action.textContent = "Đã cấp quyền trực tiếp";
+            }
+            row.append(name, makeCell(sharedWith), sharedAt, downloads, action);
+            rows.append(row);
+        });
+    };
+
+    const loadSharedFiles = async () => {
+        const rows = document.getElementById("shared-file-rows");
+        const empty = document.getElementById("shared-files-empty");
+        rows.replaceChildren();
+        empty.hidden = true;
+        try {
+            const { files: sharedFiles } = await apiRequest("api/shared_files.php");
+            renderSharedFiles(sharedFiles);
+            return true;
+        } catch (error) {
+            rows.replaceChildren();
+            empty.hidden = false;
+            empty.textContent = error.message;
+            return false;
+        }
     };
 
     const renderRows = (target, list) => {
@@ -207,13 +277,33 @@
         });
     };
 
+    const deleteFileRecord = async (fileId) => {
+        const file = files.find((item) => item.id === fileId);
+        if (!file || !window.confirm(`Bạn có chắc muốn xóa “${file.file_name}”? Thao tác này không thể hoàn tác.`)) return false;
+        try {
+            await apiRequest("api/delete_file.php", { method: "POST", body: { file_id: fileId } });
+            files = files.filter((item) => item.id !== fileId);
+            if (selectedFileId === fileId) selectedFileId = null;
+            renderFiles();
+            document.dispatchEvent(new CustomEvent("folders:refresh"));
+            await loadAccount();
+            loadPersonalActivity();
+            loadNotifications().catch((error) => showToast(error.message));
+            showToast(`Đã xóa “${file.file_name}”.`);
+            return true;
+        } catch (error) {
+            showToast(error.message);
+            return false;
+        }
+    };
+
     const setSelectedFile = (file) => {
         const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
         const allowedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
-        if (!allowedExtensions.includes(extension) || file.size < 1 || file.size > 100 * 1024 * 1024) {
+        if (!allowedExtensions.includes(extension) || file.size < 1 || file.size > maxUploadBytes) {
             selectedUpload = null;
             selectedFile.hidden = true;
-            showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–100 MB.");
+            showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–1 GB.");
             return false;
         }
         if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
@@ -277,10 +367,6 @@
     };
 
     const openFileDetails = async (event) => {
-        if (event.target.closest(".row-menu")) {
-            showToast("Các tùy chọn tệp sẽ hiển thị tại đây.");
-            return;
-        }
         const row = event.target.closest(".file-row");
         if (!row) return;
 
@@ -322,9 +408,13 @@
         document.getElementById("detail-link-expiry").value = file.expires_at ? file.expires_at.slice(0, 10) : "";
         document.getElementById("create-link").disabled = !isPublic;
         document.getElementById("create-link").title = isPublic ? "Lưu cài đặt và tạo mã liên kết mới" : "Chỉ tệp công khai mới có thể tạo liên kết tải";
+        document.getElementById("share-file").disabled = !isPublic;
+        document.getElementById("share-file").title = isPublic ? "Tạo liên kết và sao chép để chia sẻ" : "Chỉ tệp công khai mới có thể tạo liên kết tải";
         renderPermissions([]);
         document.getElementById("permission-history").hidden = true;
         document.getElementById("permission-history-toggle").textContent = "Xem lịch sử cấp quyền";
+        document.getElementById("shared-files-panel").hidden = true;
+        document.getElementById("shared-details-panel").hidden = false;
         activateView("shared");
 
         try {
@@ -336,7 +426,15 @@
     };
 
     document.querySelectorAll(".nav-link[data-view]").forEach((link) => {
-        link.addEventListener("click", () => activateView(link.dataset.view));
+        link.addEventListener("click", () => {
+            const viewName = link.dataset.view;
+            if (viewName === "shared") {
+                document.getElementById("shared-files-panel").hidden = false;
+                document.getElementById("shared-details-panel").hidden = true;
+                loadSharedFiles();
+            }
+            activateView(viewName);
+        });
     });
     document.querySelectorAll("[data-open-upload]").forEach((button) => {
         button.addEventListener("click", () => activateView("upload"));
@@ -344,8 +442,38 @@
     document.querySelectorAll("[data-open-files]").forEach((button) => {
         button.addEventListener("click", () => activateView("files"));
     });
-    recentFileRows.addEventListener("click", openFileDetails);
-    allFileRows.addEventListener("click", openFileDetails);
+    const handleFileTableClick = async (event) => {
+        const menuButton = event.target.closest(".row-menu");
+        if (menuButton) {
+            event.stopPropagation();
+            const menu = menuButton.nextElementSibling;
+            const opening = menu.hidden;
+            document.querySelectorAll(".file-action-menu").forEach((item) => { item.hidden = true; });
+            document.querySelectorAll(".row-menu").forEach((item) => item.setAttribute("aria-expanded", "false"));
+            menu.hidden = !opening;
+            menuButton.setAttribute("aria-expanded", String(opening));
+            return;
+        }
+        const action = event.target.closest("[data-file-action]");
+        if (action) {
+            event.stopPropagation();
+            const row = action.closest(".file-row");
+            action.closest(".file-action-menu").hidden = true;
+            action.closest(".file-action-menu-wrap").querySelector(".row-menu").setAttribute("aria-expanded", "false");
+            const fileId = Number(row.dataset.fileId);
+            if (action.dataset.fileAction === "delete") {
+                await deleteFileRecord(fileId);
+            } else if (action.dataset.fileAction === "share") {
+                await openFileDetails({ target: row });
+            }
+            return;
+        }
+        document.querySelectorAll(".file-action-menu").forEach((item) => { item.hidden = true; });
+        document.querySelectorAll(".row-menu").forEach((item) => item.setAttribute("aria-expanded", "false"));
+        await openFileDetails(event);
+    };
+    recentFileRows.addEventListener("click", handleFileTableClick);
+    allFileRows.addEventListener("click", handleFileTableClick);
     allFileRows.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") openFileDetails(event);
     });
@@ -378,11 +506,11 @@
             showToast("Định dạng tệp này không được hỗ trợ.");
             return;
         }
-        if (file.size < 1 || file.size > 100 * 1024 * 1024) {
+        if (file.size < 1 || file.size > maxUploadBytes) {
             selectedUpload = null;
             selectedFile.hidden = true;
             fileInput.value = "";
-            showToast("Kích thước tệp phải từ 1 byte đến 100 MB.");
+            showToast("Kích thước tệp phải từ 1 byte đến 1 GB.");
             return;
         }
         if (storageAccount && storageAccount.storage_used_bytes + file.size > storageAccount.storage_quota_bytes) {
@@ -435,8 +563,8 @@
         }
         const displayExtension = fileNameInput.value.trim().split(".").pop().toLowerCase();
         const acceptedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
-        if (!acceptedExtensions.includes(displayExtension) || selectedUpload.size > 100 * 1024 * 1024) {
-            showToast("Tên tệp phải có định dạng được hỗ trợ và kích thước không vượt quá 100 MB.");
+        if (!acceptedExtensions.includes(displayExtension) || selectedUpload.size > maxUploadBytes) {
+            showToast("Tên tệp phải có định dạng được hỗ trợ và kích thước không vượt quá 1 GB.");
             return;
         }
         if (storageAccount && storageAccount.storage_used_bytes + selectedUpload.size > storageAccount.storage_quota_bytes) {
@@ -516,6 +644,11 @@
             emailInput.value = "";
             const { permissions } = await apiRequest(`api/permissions.php?file_id=${selectedFileId}`);
             renderPermissions(permissions);
+            const listUpdated = await loadSharedFiles();
+            if (!listUpdated) {
+                showToast("Đã cấp quyền nhưng không thể cập nhật danh sách chia sẻ.");
+                return;
+            }
             showToast("Đã lưu quyền truy cập.");
         } catch (error) {
             showToast(error.message);
@@ -540,16 +673,20 @@
             document.getElementById("link-status-toggle").classList.remove("on");
             document.getElementById("link-status-label").textContent = "Liên kết đã bị thu hồi";
             document.getElementById("revoke-link").hidden = true;
+            await loadSharedFiles();
             showToast("Đã thu hồi liên kết chia sẻ.");
         } catch (error) {
             showToast(error.message);
         }
     });
 
-    document.getElementById("create-link").addEventListener("click", async () => {
+    const createShareLink = async (copyLink) => {
         if (!selectedFileId) return;
-        const button = document.getElementById("create-link");
-        button.disabled = true;
+        const buttons = [
+            document.getElementById("create-link"),
+            document.getElementById("share-file"),
+        ];
+        buttons.forEach((button) => { button.disabled = true; });
         try {
             const { file } = await apiRequest("api/create_link.php", {
                 method: "POST",
@@ -572,11 +709,51 @@
                 : "Không thời hạn";
             document.getElementById("revoke-link").hidden = false;
             renderFiles();
-            showToast("Đã lưu cài đặt và tạo mã liên kết mới.");
+            const listUpdated = await loadSharedFiles();
+            if (!listUpdated) {
+                showToast("Đã tạo liên kết nhưng không thể cập nhật danh sách chia sẻ.");
+                return;
+            }
+            if (copyLink) {
+                if (!navigator.clipboard?.writeText) {
+                    showToast("Đã tạo liên kết, nhưng trình duyệt không hỗ trợ sao chép tự động.");
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    showToast("Đã tạo liên kết và sao chép để chia sẻ.");
+                } catch {
+                    showToast("Đã tạo liên kết nhưng không thể sao chép tự động. Hãy sao chép liên kết ở khung bên trái.");
+                }
+            } else {
+                showToast("Đã lưu cài đặt, tạo mã mới và cập nhật danh sách chia sẻ.");
+            }
         } catch (error) {
             showToast(error.message);
         } finally {
-            button.disabled = false;
+            buttons.forEach((button) => { button.disabled = false; });
+        }
+    };
+
+    document.getElementById("create-link").addEventListener("click", () => createShareLink(false));
+    document.getElementById("share-file").addEventListener("click", () => createShareLink(true));
+
+    document.getElementById("shared-file-rows").addEventListener("click", async (event) => {
+        const copyButton = event.target.closest("[data-copy-share-link]");
+        if (!copyButton) return;
+        if (!navigator.clipboard?.writeText) {
+            showToast("Trình duyệt không hỗ trợ sao chép tự động.");
+            return;
+        }
+        try {
+            const shareUrl = new URL(
+                `download.php?code=${encodeURIComponent(copyButton.dataset.copyShareLink)}`,
+                window.location.href
+            ).href;
+            await navigator.clipboard.writeText(shareUrl);
+            showToast("Đã sao chép liên kết chia sẻ.");
+        } catch {
+            showToast("Không thể sao chép liên kết tự động.");
         }
     });
 
@@ -620,19 +797,8 @@
     });
 
     document.getElementById("delete-file").addEventListener("click", async () => {
-        if (!selectedFileId || !window.confirm("Bạn có chắc muốn xóa tệp này? Thao tác này không thể hoàn tác.")) return;
-        try {
-            await apiRequest("api/delete_file.php", { method: "POST", body: { file_id: selectedFileId } });
-            files = files.filter((file) => file.id !== selectedFileId);
-            selectedFileId = null;
-            renderFiles();
-            activateView("files");
-            document.dispatchEvent(new CustomEvent("folders:refresh"));
-            await loadAccount();
-            showToast("Đã xóa tệp.");
-        } catch (error) {
-            showToast(error.message);
-        }
+        if (!selectedFileId) return;
+        if (await deleteFileRecord(selectedFileId)) activateView("files");
     });
 
     document.getElementById("logout-button").addEventListener("click", async () => {
@@ -642,6 +808,12 @@
         } catch (error) {
             showToast(error.message);
         }
+    });
+
+    document.addEventListener("click", (event) => {
+        if (event.target.closest(".file-action-menu-wrap")) return;
+        document.querySelectorAll(".file-action-menu").forEach((item) => { item.hidden = true; });
+        document.querySelectorAll(".row-menu").forEach((item) => item.setAttribute("aria-expanded", "false"));
     });
 
     document.getElementById("help-link").addEventListener("click", (event) => {

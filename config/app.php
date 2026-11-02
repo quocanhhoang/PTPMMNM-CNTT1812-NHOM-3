@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-define('FILESHARE_MAX_UPLOAD_BYTES', 100 * 1024 * 1024);
+define('FILESHARE_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024);
 define('FILESHARE_DEFAULT_QUOTA_BYTES', 10 * 1024 * 1024 * 1024);
 $allowedExtensionSetting = getenv('FILESHARE_ALLOWED_EXTENSIONS')
     ?: 'pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,md,jpg,jpeg,png,gif,webp,zip';

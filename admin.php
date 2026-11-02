@@ -68,7 +68,7 @@ $adminName = htmlspecialchars($adminNameText, ENT_QUOTES, 'UTF-8');
             <header class="topbar"><div class="breadcrumbs"><a href="index.php">Trang chủ</a><span class="breadcrumb-divider">/</span><strong>Dashboard quản trị</strong></div><div class="topbar-actions"><span class="admin-name"><?= $adminName ?></span><button class="logout-button" type="button" id="admin-logout">Đăng xuất</button></div></header>
             <div class="page-content admin-content">
                 <section aria-labelledby="admin-title">
-                    <div class="page-heading"><div><p class="eyebrow">TỔNG QUAN HỆ THỐNG</p><h1 id="admin-title">Dashboard quản trị</h1><p class="welcome-subtitle">Theo dõi tình hình người dùng và hoạt động tải tệp.</p></div></div>
+                    <div class="page-heading"><div><p class="eyebrow">QUẢN LÝ HỆ THỐNG</p><h1 id="admin-title">Dashboard quản trị</h1><p class="welcome-subtitle">Theo dõi tình hình người dùng và hoạt động tải tệp.</p></div></div>
                     <div class="stats-grid admin-stats">
                         <article class="stat-card"><div class="stat-top"><span>Tổng người dùng</span><span class="stat-icon violet">U</span></div><div class="stat-value" id="admin-user-count">—</div></article>
                         <article class="stat-card"><div class="stat-top"><span>Tổng số tệp</span><span class="stat-icon blue">F</span></div><div class="stat-value" id="admin-file-count">—</div></article>
@@ -85,6 +85,11 @@ $adminName = htmlspecialchars($adminNameText, ENT_QUOTES, 'UTF-8');
                             <div class="download-chart" id="download-chart" role="img" aria-label="Biểu đồ lượt tải trong 7 ngày gần đây"></div>
                         </section>
                     </div>
+                    <section class="content-card admin-card admin-user-search-card">
+                        <div class="section-heading"><div><h2>Tra cứu người dùng</h2><p>Tìm theo một phần tên người dùng.</p></div></div>
+                        <label class="admin-user-search"><span class="sr-only">Tên người dùng</span><input id="admin-user-search" type="search" maxlength="200" placeholder="Ví dụ: Nguyễn Văn" autocomplete="off"></label>
+                        <div class="admin-user-results" id="admin-user-results" aria-live="polite"><p class="activity-empty">Nhập tên để tra cứu người dùng.</p></div>
+                    </section>
                     <section class="content-card admin-card admin-top-files">
                         <div class="section-heading"><div><h2>Top tệp được tải nhiều nhất</h2><p>5 tệp có tổng lượt tải cao nhất</p></div></div>
                         <div class="file-table-wrap"><table class="file-table admin-file-table"><thead><tr><th>TÊN TỆP</th><th>CHỦ SỞ HỮU</th><th>LƯỢT TẢI</th></tr></thead><tbody id="admin-top-files"><tr><td colspan="3">Đang tải...</td></tr></tbody></table></div>
