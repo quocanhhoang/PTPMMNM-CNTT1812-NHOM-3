@@ -39,7 +39,29 @@ $downloads = pg_query(
      GROUP BY created_at::date
      ORDER BY day"
 );
-if (!$overview || !$activity || !$topFiles || !$downloads) {
+$topCoins = pg_query(
+    $conn,
+    "SELECT id, full_name, email, coins::bigint
+     FROM users WHERE role = 'user'
+     ORDER BY coins DESC, id ASC LIMIT 10"
+);
+$missionLeaders = pg_query(
+    $conn,
+    "SELECT u.id, u.full_name, u.email, COUNT(rc.id)::bigint AS value
+     FROM users u LEFT JOIN reward_claims rc ON rc.user_id = u.id
+     WHERE u.role = 'user'
+     GROUP BY u.id
+     ORDER BY value DESC, u.id ASC LIMIT 10"
+);
+$onlineLeaders = pg_query(
+    $conn,
+    "SELECT u.id, u.full_name, u.email, COALESCE(SUM(od.online_seconds), 0)::bigint AS value
+     FROM users u LEFT JOIN online_daily od ON od.user_id = u.id
+     WHERE u.role = 'user'
+     GROUP BY u.id
+     ORDER BY value DESC, u.id ASC LIMIT 10"
+);
+if (!$overview || !$activity || !$topFiles || !$downloads || !$topCoins || !$missionLeaders || !$onlineLeaders) {
     error_log('Failed to load administrator dashboard: ' . pg_last_error($conn));
     json_response(['error' => 'Không thể tải dữ liệu dashboard quản trị.'], 500);
 }
@@ -72,6 +94,19 @@ for ($offset = 6; $offset >= 0; $offset--) {
     $chart[] = ['day' => $day, 'download_count' => $downloadsByDay[$day] ?? 0];
 }
 
+$leaderboard = static function ($result, string $valueField): array {
+    $rows = [];
+    while ($row = pg_fetch_assoc($result)) {
+        $rows[] = [
+            'user_id' => (int) $row['id'],
+            'full_name' => $row['full_name'],
+            'email' => $row['email'],
+            'value' => (int) $row[$valueField],
+        ];
+    }
+    return $rows;
+};
+
 json_response([
     'overview' => [
         'user_count' => (int) $overviewRow['user_count'],
@@ -82,4 +117,9 @@ json_response([
     'recent_activity' => $recentActivity,
     'top_files' => $popularFiles,
     'downloads_7_days' => $chart,
+    'leaderboards' => [
+        'coins' => $leaderboard($topCoins, 'coins'),
+        'missions' => $leaderboard($missionLeaders, 'value'),
+        'online' => $leaderboard($onlineLeaders, 'value'),
+    ],
 ]);

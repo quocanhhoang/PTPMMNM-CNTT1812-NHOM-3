@@ -6,6 +6,7 @@ Học lập trình web bằng PHP
 - Cấu hình kết nối PostgreSQL trong `config/database.php`.
 - Áp dụng migration `database/migrations/001_accounts_folders_quota.sql` lên database trước khi chạy ứng dụng. Tài khoản mới mặc định có quota 10 GB, theo `users.storage_limit` hiện có.
 - Áp dụng `database/migrations/003_admin_notifications.sql` để bật vai trò quản trị và lưu thông báo. Đặt tài khoản quản trị bằng `php bin/set_user_role.php email@example.com admin`; có thể trả về tài khoản thường bằng tham số `user`.
+- Áp dụng `database/migrations/004_rewards.sql` để bật hệ thống xu, nhiệm vụ, thống kê online và dung lượng thưởng có thời hạn.
 - Đăng nhập qua `login.php`; người dùng mới có thể đăng ký. Để bật mật khẩu cho tài khoản đã tồn tại, chạy `php bin/set_user_password.php email@example.com`. Đổi quota bằng `php bin/set_user_quota.php email@example.com 2048` (đơn vị MB; không thể đặt thấp hơn dung lượng đang dùng).
 - Chạy ứng dụng qua PHP server với giới hạn đủ cho tệp 1 GB, ví dụ: `php -d upload_max_filesize=1024M -d post_max_size=1050M -d max_execution_time=300 -d max_input_time=300 -S 127.0.0.1:8000`, rồi mở `http://127.0.0.1:8000`.
 - PHP cần bật các extension `pgsql` và `fileinfo`; cấu hình `upload_max_filesize` tối thiểu `1024M` và `post_max_size` lớn hơn kích thước tệp (ví dụ `1050M`). Nếu chạy sau Nginx/Apache hoặc proxy, cần tăng giới hạn body tương ứng; giới hạn ứng dụng tối đa là 1 GB.
@@ -24,6 +25,9 @@ Học lập trình web bằng PHP
 - Chuông thông báo hiển thị thông báo tải tệp lên. Thông báo thanh toán/hết hạn gói cần được ghi vào bảng `notifications` khi bổ sung luồng thanh toán/gói dung lượng tương ứng; hiện dự án chưa có các luồng này.
 - Dashboard admin tại `admin.php` chỉ cho tài khoản có `users.role = 'admin'`; số liệu tổng quan, hoạt động gần đây, top lượt tải và biểu đồ lượt tải 7 ngày được lấy từ PostgreSQL.
 - Dashboard admin có mục **Tra cứu người dùng**, tìm theo chuỗi con trong tên và hiển thị tên, email, vai trò.
+- Mục **Nhiệm vụ & xu** thưởng 25 xu cho lần đăng nhập đầu tiên mỗi ngày, 50 xu vào Chủ nhật. Nhiệm vụ upload và tạo liên kết được tính riêng: 5 lần/ngày nhận 10 xu, 20 lần/tuần nhận 20 xu, 50 lần/tháng nhận 30 xu. Các mốc online 15/30/45/60/120/180/360 phút nhận 50 xu mỗi mốc; tiến độ lưu theo ngày và được reset theo ngày của PostgreSQL. Tab nền vẫn gửi heartbeat mỗi 30 giây; khoảng thời gian giữa hai heartbeat được tính tối đa 60 giây để tránh cộng dồn thời gian khi đóng trang.
+- Xu có thể đổi dung lượng cộng thêm tạm thời: 1 tuần +500 MB/500 xu, 2 tuần +1 GB/950 xu; 1/3/6/9 tháng lần lượt +3/9/18/27 GB với giá 2.500/4.850/7.620/10.300 xu; 1 năm +20 GB/13.870 xu. Các gói được cộng vào quota cơ bản và từng gói hết hạn độc lập.
+- Dashboard admin có biểu đồ miền top 10 theo xu, số nhiệm vụ đã nhận thưởng và tổng thời gian online; admin có thể tặng số xu tự nhập cho người đang nằm trong ít nhất một bảng top 10. Các thay đổi số dư được ghi vào sổ giao dịch xu.
 # Git và Github:
 - git remote -v: Kiểm tra project đang liên kết với repo GitHub nào.
 - git remote set-url origin https://github.com/quocanhhoang/PTPMMNM-CNTT1812-NHOM-3.git: Cập nhật remote sau - khi đổi tên repo
