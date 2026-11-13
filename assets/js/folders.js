@@ -15,6 +15,9 @@
     let openedFolderId = null;
     let draggedFileId = null;
     let draggedFolderId = null;
+    let pendingFolderPointerDrag = null;
+    let activeFolderPointerDrag = null;
+    let suppressFolderClickUntil = 0;
 
     const request = async (url, options = {}) => {
         const headers = { ...(options.headers || {}) };
@@ -83,6 +86,100 @@
         document.dispatchEvent(new CustomEvent("files:refresh"));
         await refresh();
     };
+
+    const moveFolderTo = async (folderId, parentId) => {
+        try {
+            await post({ action: "move", folder_id: folderId, parent_id: parentId });
+            draggedFolderId = null;
+            await refresh();
+        } catch (error) {
+            showFolderError(error);
+        }
+    };
+
+    const readDraggedFolderId = (event) => {
+        const transfer = event.dataTransfer;
+        const value = transfer?.getData("application/x-fileshare-folder") || transfer?.getData("text/plain") || "";
+        const match = /^folder:(\d+)$/.exec(value);
+        return match ? Number(match[1]) : draggedFolderId;
+    };
+
+    const bindFolderDropTarget = (target, parentId) => {
+        target.dataset.folderDropId = parentId === null ? "root" : String(parentId);
+        target.addEventListener("dragover", (event) => {
+            const isFolderDrag = draggedFolderId !== null
+                || event.dataTransfer?.types?.includes("application/x-fileshare-folder");
+            if (isFolderDrag && draggedFolderId !== parentId) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+                target.classList.add("folder-drop-target");
+            }
+        });
+        target.addEventListener("dragleave", (event) => {
+            if (!target.contains(event.relatedTarget)) target.classList.remove("folder-drop-target");
+        });
+        target.addEventListener("drop", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            target.classList.remove("folder-drop-target");
+            const folderId = readDraggedFolderId(event);
+            if (folderId === null || folderId === parentId) return;
+            await moveFolderTo(folderId, parentId);
+        });
+    };
+
+    const bindFolderPointerDragSource = (source, folderId) => {
+        source.draggable = false;
+        source.addEventListener("pointerdown", (event) => {
+            const interactive = event.target.closest("button, a, input, select");
+            if (event.button !== 0 || (interactive && interactive !== source)) return;
+            pendingFolderPointerDrag = {
+                folderId,
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                source,
+            };
+            source.setPointerCapture?.(event.pointerId);
+        });
+    };
+
+    document.addEventListener("pointermove", (event) => {
+        if (!pendingFolderPointerDrag || event.pointerId !== pendingFolderPointerDrag.pointerId) return;
+        const dx = event.clientX - pendingFolderPointerDrag.startX;
+        const dy = event.clientY - pendingFolderPointerDrag.startY;
+        if (!activeFolderPointerDrag && Math.hypot(dx, dy) < 6) return;
+        event.preventDefault();
+        if (!activeFolderPointerDrag) {
+            activeFolderPointerDrag = pendingFolderPointerDrag;
+            activeFolderPointerDrag.source.classList.add("folder-pointer-dragging");
+        }
+        document.querySelectorAll(".folder-drop-target").forEach((target) => target.classList.remove("folder-drop-target"));
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-folder-drop-id]");
+        if (target && target.dataset.folderDropId !== String(activeFolderPointerDrag.folderId)) {
+            target.classList.add("folder-drop-target");
+        }
+    }, { passive: false });
+
+    const finishFolderPointerDrag = (event) => {
+        if (!pendingFolderPointerDrag || event.pointerId !== pendingFolderPointerDrag.pointerId) return;
+        const drag = activeFolderPointerDrag;
+        pendingFolderPointerDrag = null;
+        activeFolderPointerDrag = null;
+        if (!drag) return;
+
+        suppressFolderClickUntil = Date.now() + 500;
+        drag.source.classList.remove("folder-pointer-dragging");
+        document.querySelectorAll(".folder-drop-target").forEach((target) => target.classList.remove("folder-drop-target"));
+        const target = document.elementFromPoint(event.clientX, event.clientY)?.closest("[data-folder-drop-id]");
+        if (!target || target.dataset.folderDropId === String(drag.folderId)) return;
+        const parentId = target.dataset.folderDropId === "root" ? null : Number(target.dataset.folderDropId);
+        void moveFolderTo(drag.folderId, parentId);
+    };
+
+    document.addEventListener("pointerup", finishFolderPointerDrag);
+    document.addEventListener("pointercancel", finishFolderPointerDrag);
 
     const renderFilePicker = async (folder, item) => {
         if (item.querySelector(".folder-file-picker")) return;
@@ -340,12 +437,23 @@
         document.getElementById("opened-folder-meta").textContent = `${folder.file_count} tệp · ${folder.folder_count} thư mục con`;
         const childrenContainer = document.getElementById("opened-folder-children");
         childrenContainer.replaceChildren();
+        childrenContainer.classList.toggle("has-folder-children", folders.some((item) => item.parent_id === folder.id));
         folders.filter((item) => item.parent_id === folder.id).forEach((child) => {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "folder-child-chip";
             button.textContent = `${child.name} · ${child.file_count} tệp`;
-            button.addEventListener("click", () => openFolder(child.id));
+            button.addEventListener("click", (event) => {
+                if (Date.now() < suppressFolderClickUntil) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+                openFolder(child.id);
+            });
+            button.title = "Kéo thư mục này lên thư mục con khác để chuyển vào đó";
+            bindFolderPointerDragSource(button, child.id);
+            bindFolderDropTarget(button, child.id);
             childrenContainer.append(button);
         });
         try {
