@@ -132,4 +132,4 @@ if (!pg_query($conn, 'COMMIT')) {
     json_response(['error' => 'Không thể lưu quyền truy cập.'], 500);
 }
 
-json_response(['permission' => ['full_name' => $user['full_name'], 'email' => $user['email']]], 201);
+json_response(['permission' => ['id' => (int) $user['id'], 'full_name' => $user['full_name'], 'email' => $user['email']]], 201);

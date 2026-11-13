@@ -18,13 +18,18 @@ if ($unknownArgs !== []) {
 
 $query = pg_query(
     $conn,
-    'SELECT id, file_name, file_path, expires_at
+    'SELECT id, file_name, file_path, expires_at, download_limit, download_count, is_link_active
      FROM files
-     WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP
-     ORDER BY expires_at, id'
+     WHERE share_code IS NOT NULL
+       AND (
+           is_link_active = FALSE
+           OR (expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP)
+           OR (download_limit IS NOT NULL AND download_count >= download_limit)
+       )
+     ORDER BY expires_at NULLS LAST, id'
 );
 if (!$query) {
-    fwrite(STDERR, "Không thể lấy danh sách tệp hết hạn: " . pg_last_error($conn) . "\n");
+    fwrite(STDERR, "Không thể lấy danh sách tệp cần dọn: " . pg_last_error($conn) . "\n");
     exit(1);
 }
 $files = [];
@@ -32,13 +37,19 @@ while ($row = pg_fetch_assoc($query)) {
     $files[] = $row;
 }
 
-echo "Danh sách tệp hết hạn sẽ được dọn:\n";
+echo "Danh sách tệp có liên kết hết hạn, bị thu hồi hoặc hết lượt tải:\n";
 if ($files === []) {
     echo "Không có tệp nào cần dọn.\n";
     exit(0);
 }
 foreach ($files as $file) {
-    printf("- #%s | %s | hết hạn: %s\n", $file['id'], $file['file_name'], $file['expires_at']);
+    $reasons = [];
+    if ($file['is_link_active'] !== 't') $reasons[] = 'đã thu hồi';
+    if ($file['expires_at'] !== null && strtotime($file['expires_at']) <= time()) $reasons[] = 'hết hạn';
+    if ($file['download_limit'] !== null && (int) $file['download_count'] >= (int) $file['download_limit']) {
+        $reasons[] = 'hết lượt tải';
+    }
+    printf("- #%s | %s | %s\n", $file['id'], $file['file_name'], implode(', ', $reasons));
 }
 if (!$deleteRequested) {
     echo "\nĐây chỉ là xem trước. Để xem lại danh sách và xác nhận xóa, chạy: php bin/cleanup_expired.php --delete\n";
@@ -60,8 +71,15 @@ $ids = array_column($files, 'id');
 $idList = '{' . implode(',', array_map('intval', $ids)) . '}';
 $current = pg_query_params(
     $conn,
-    'SELECT id, file_name, file_path, expires_at FROM files
-     WHERE id = ANY($1::bigint[]) AND expires_at < CURRENT_TIMESTAMP
+    'SELECT id, file_name, file_path, expires_at, download_limit, download_count, is_link_active
+     FROM files
+     WHERE id = ANY($1::bigint[])
+       AND share_code IS NOT NULL
+       AND (
+           is_link_active = FALSE
+           OR (expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP)
+           OR (download_limit IS NOT NULL AND download_count >= download_limit)
+       )
      FOR UPDATE',
     [$idList]
 );
@@ -73,7 +91,7 @@ if ($current) {
 }
 if (!$current || $files === []) {
     pg_query($conn, 'ROLLBACK');
-    echo "Danh sách đã thay đổi; không còn tệp hết hạn để xóa.\n";
+    echo "Danh sách đã thay đổi; không còn tệp đủ điều kiện dọn.\n";
     exit(0);
 }
 $currentIds = '{' . implode(',', array_map(static fn (array $file): int => (int) $file['id'], $files)) . '}';
@@ -108,4 +126,4 @@ foreach ($files as $file) {
         fwrite(STDERR, "Không thể xóa tệp vật lý #{$file['id']} ({$file['file_name']}).\n");
     }
 }
-printf("Đã xóa %d bản ghi hết hạn; xóa được %d tệp trên ổ đĩa.\n", pg_num_rows($deleted), $removed);
+printf("Đã xóa %d bản ghi cần dọn; xóa được %d tệp trên ổ đĩa.\n", pg_num_rows($deleted), $removed);

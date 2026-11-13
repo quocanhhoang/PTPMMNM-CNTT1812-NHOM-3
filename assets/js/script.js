@@ -132,6 +132,61 @@
         return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("vi-VN").format(date);
     };
 
+    const updatePlanOptions = () => {
+        if (!storageAccount) {
+            document.querySelectorAll(".plan-action").forEach((button) => { button.disabled = false; });
+            return;
+        }
+        const quota = storageAccount.storage_quota_bytes;
+        const currentGb = quota / (1024 ** 3);
+        document.querySelectorAll(".plan-card").forEach((card) => {
+            const planGb = Number(card.dataset.planGb);
+            const button = card.querySelector(".plan-action");
+            const status = card.querySelector(".plan-status");
+            const isCurrent = planGb === currentGb;
+            const isLower = planGb < currentGb;
+            button.disabled = isCurrent || isLower;
+            status.hidden = !isCurrent && !isLower;
+            status.textContent = isCurrent ? "Gói hiện tại" : "Thấp hơn hạn mức hiện tại";
+            card.classList.toggle("plan-card-current", isCurrent);
+        });
+    };
+
+    const folderNameForFile = (file) => {
+        const folders = window.fileShareFolders || [];
+        return folders.find((folder) => folder.id === file.folder_id)?.name || "";
+    };
+
+    const renderSearchResults = () => {
+        const query = searchInput.value.trim().toLocaleLowerCase("vi");
+        searchResults.replaceChildren();
+        const matches = files.filter((file) => (
+            `${file.file_name} ${folderNameForFile(file)}`.toLocaleLowerCase("vi").includes(query)
+        )).slice(0, 20);
+        document.getElementById("search-result-caption").textContent = query
+            ? `${matches.length} kết quả`
+            : "Tệp gần đây";
+        if (matches.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "popover-empty";
+            empty.textContent = query ? "Không tìm thấy tệp phù hợp." : "Bạn chưa có tệp nào.";
+            searchResults.append(empty);
+            return;
+        }
+        matches.forEach((file) => {
+            const result = document.createElement("button");
+            result.className = "global-search-result";
+            result.type = "button";
+            result.dataset.fileId = String(file.id);
+            const name = document.createElement("strong");
+            name.textContent = file.file_name;
+            const folder = document.createElement("small");
+            folder.textContent = folderNameForFile(file) || "Không có thư mục";
+            result.append(name, folder);
+            searchResults.append(result);
+        });
+    };
+
     const getIconType = (name) => {
         const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
         if (["doc", "docx"].includes(extension)) return ["word", "W"];
@@ -789,10 +844,10 @@
     const setSelectedFile = (file) => {
         const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
         const allowedExtensions = fileInput.accept.split(",").map((item) => item.trim().replace(/^\./, "").toLowerCase());
-        if (!allowedExtensions.includes(extension) || file.size < 1 || file.size > 100 * 1024 * 1024) {
+        if (!allowedExtensions.includes(extension) || file.size < 1 || file.size > maxUploadBytes) {
             selectedUpload = null;
             selectedFile.hidden = true;
-            showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–100 MB.");
+            showToast("Loại tệp không được hỗ trợ hoặc kích thước không nằm trong giới hạn 1 byte–1 GB.");
             return false;
         }
         if (storageQuotaBytes > 0 && storageUsedBytes + file.size > storageQuotaBytes) {

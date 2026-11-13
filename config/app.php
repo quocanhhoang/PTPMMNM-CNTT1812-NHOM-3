@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-define('FILESHARE_MAX_UPLOAD_BYTES', 100 * 1024 * 1024);
+define('FILESHARE_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024);
 define('FILESHARE_DEFAULT_QUOTA_BYTES', 10 * 1024 * 1024 * 1024);
 define('FILESHARE_ALLOWED_EXTENSIONS', ['pdf', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'webp']);
 $storageDirectory = getenv('FILESHARE_STORAGE_DIR')

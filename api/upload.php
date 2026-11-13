@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/reward_helpers.php';
 require_method('POST');
 $userId = require_authenticated_user();
 require_csrf_token();
@@ -47,7 +48,7 @@ if ($upload['error'] !== UPLOAD_ERR_OK) {
 
 $fileSize = (int) $upload['size'];
 if ($fileSize < 1 || $fileSize > FILESHARE_MAX_UPLOAD_BYTES) {
-    json_response(['error' => 'Kích thước tệp phải từ 1 byte đến 100 MB.'], 400);
+    json_response(['error' => 'Kích thước tệp phải từ 1 byte đến 1 GB.'], 400);
 }
 
 $fileName = trim((string) ($_POST['fileName'] ?? ''));
@@ -265,6 +266,7 @@ try {
     if (!$activity) {
         throw new RuntimeException(pg_last_error($conn));
     }
+    award_activity_missions($conn, $userId, 'upload');
     $notification = pg_query_params(
         $conn,
         "INSERT INTO notifications (user_id, type, title, message)

@@ -68,12 +68,12 @@ $adminName = htmlspecialchars($adminNameText, ENT_QUOTES, 'UTF-8');
             <header class="topbar"><div class="breadcrumbs"><a href="index.php">Trang chủ</a><span class="breadcrumb-divider">/</span><strong>Dashboard quản trị</strong></div><div class="topbar-actions"><span class="admin-name"><?= $adminName ?></span><button class="logout-button" type="button" id="admin-logout">Đăng xuất</button></div></header>
             <div class="page-content admin-content">
                 <section aria-labelledby="admin-title">
-                    <div class="page-heading"><div><p class="eyebrow">TỔNG QUAN HỆ THỐNG</p><h1 id="admin-title">Dashboard quản trị</h1><p class="welcome-subtitle">Theo dõi tình hình người dùng và hoạt động tải tệp.</p></div></div>
+                    <div class="page-heading"><div><p class="eyebrow">QUẢN LÝ HỆ THỐNG</p><h1 id="admin-title">Dashboard quản trị</h1><p class="welcome-subtitle">Theo dõi tình hình người dùng và hoạt động tải tệp.</p></div></div>
                     <div class="stats-grid admin-stats">
-                        <article class="stat-card"><div class="stat-top"><span>Tổng người dùng</span><span class="stat-icon violet">U</span></div><div class="stat-value" id="admin-user-count">—</div></article>
+                        <article class="stat-card"><div class="stat-top"><span>Tổng người dùng</span><span class="stat-icon blue">U</span></div><div class="stat-value" id="admin-user-count">—</div></article>
                         <article class="stat-card"><div class="stat-top"><span>Tổng số tệp</span><span class="stat-icon blue">F</span></div><div class="stat-value" id="admin-file-count">—</div></article>
                         <article class="stat-card"><div class="stat-top"><span>Tổng lượt tải</span><span class="stat-icon orange">↓</span></div><div class="stat-value" id="admin-download-count">—</div></article>
-                        <article class="stat-card"><div class="stat-top"><span>Dung lượng lưu trữ</span><span class="stat-icon violet">▤</span></div><div class="stat-value" id="admin-storage-bytes">—</div></article>
+                        <article class="stat-card"><div class="stat-top"><span>Dung lượng lưu trữ</span><span class="stat-icon blue">▤</span></div><div class="stat-value" id="admin-storage-bytes">—</div></article>
                     </div>
                     <div class="admin-dashboard-grid">
                         <section class="content-card admin-card">
@@ -85,6 +85,26 @@ $adminName = htmlspecialchars($adminNameText, ENT_QUOTES, 'UTF-8');
                             <div class="download-chart" id="download-chart" role="img" aria-label="Biểu đồ lượt tải trong 7 ngày gần đây"></div>
                         </section>
                     </div>
+                    <section class="content-card admin-card admin-user-search-card">
+                        <div class="section-heading"><div><h2>Tra cứu người dùng</h2><p>Tìm theo một phần tên người dùng.</p></div></div>
+                        <label class="admin-user-search"><span class="sr-only">Tên người dùng</span><input id="admin-user-search" type="search" maxlength="200" placeholder="Ví dụ: Nguyễn Văn" autocomplete="off"></label>
+                        <div class="admin-user-results" id="admin-user-results" aria-live="polite"><p class="activity-empty">Nhập tên để tra cứu người dùng.</p></div>
+                    </section>
+                    <section class="content-card admin-card admin-rewards-card">
+                        <div class="section-heading"><div><h2>Bảng xếp hạng phần thưởng</h2><p>Top 10 người dùng theo từng chỉ số; thời gian online được cộng dồn.</p></div></div>
+                        <div class="leaderboard-grid">
+                            <article class="leaderboard-panel"><h3>Nhiều xu nhất</h3><div class="leaderboard-area" id="leaderboard-coins"></div></article>
+                            <article class="leaderboard-panel"><h3>Hoàn thành nhiều nhiệm vụ nhất</h3><div class="leaderboard-area" id="leaderboard-missions"></div></article>
+                            <article class="leaderboard-panel"><h3>Online nhiều thời gian nhất</h3><div class="leaderboard-area" id="leaderboard-online"></div></article>
+                        </div>
+                        <form class="admin-gift-form" id="admin-gift-form">
+                            <label for="admin-gift-user">Tặng xu cho người trong top 10</label>
+                            <select class="text-input" id="admin-gift-user" required><option value="">Chọn người nhận</option></select>
+                            <label for="admin-gift-coins">Số xu</label>
+                            <input class="text-input" id="admin-gift-coins" type="number" min="1" max="1000000000" step="1" required placeholder="Nhập số xu">
+                            <button class="primary-button" type="submit">Tặng xu</button>
+                        </form>
+                    </section>
                     <section class="content-card admin-card admin-top-files">
                         <div class="section-heading"><div><h2>Top tệp được tải nhiều nhất</h2><p>5 tệp có tổng lượt tải cao nhất</p></div></div>
                         <div class="file-table-wrap"><table class="file-table admin-file-table"><thead><tr><th>TÊN TỆP</th><th>CHỦ SỞ HỮU</th><th>LƯỢT TẢI</th></tr></thead><tbody id="admin-top-files"><tr><td colspan="3">Đang tải...</td></tr></tbody></table></div>

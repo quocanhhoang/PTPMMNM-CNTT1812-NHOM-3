@@ -11,6 +11,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
 <head>
     <meta charset="UTF-8">
     <meta name="csrf-token" content="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+    <meta name="max-upload-bytes" content="<?= FILESHARE_MAX_UPLOAD_BYTES ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#090d18">
     <title>FileShare — Không gian tệp của bạn</title>
@@ -18,6 +19,8 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css?v=folder-move-panel-5">
 </head>
 <body>
     <div class="app-shell">
@@ -33,7 +36,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
             <nav class="main-nav" aria-label="Điều hướng chính">
                 <button class="nav-link active" type="button" data-view="dashboard">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg>
-                    <span>Tổng quan</span>
+                    <span>Chung</span>
                 </button>
                 <button class="nav-link" type="button" data-view="files">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.25A2.25 2.25 0 0 1 6.25 5h4l2 2h5.5A2.25 2.25 0 0 1 20 9.25v8.5A2.25 2.25 0 0 1 17.75 20h-11A2.75 2.75 0 0 1 4 17.25v-10Z"/><path d="M4.5 10h15" /></svg>
@@ -47,6 +50,10 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                 <button class="nav-link" type="button" data-view="upload">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M5 14v4.25A1.75 1.75 0 0 0 6.75 20h10.5A1.75 1.75 0 0 0 19 18.25V14"/></svg>
                     <span>Tải tệp lên</span>
+                </button>
+                <button class="nav-link" type="button" data-view="rewards">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.3 5.2 5.7.5-4.3 3.8 1.3 5.6-5-3-5 3 1.3-5.6L4 8.7l5.7-.5L12 3Z"/></svg>
+                    <span>Nhiệm vụ & xu</span>
                 </button>
                 <button class="nav-link" type="button" data-view="shared">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.25 10.85 7.5-4.7m-7.5 7 7.5 4.7"/></svg>
@@ -95,7 +102,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
 
         <main class="main-content">
             <header class="topbar">
-                <div class="breadcrumbs"><span>Không gian làm việc</span><span class="breadcrumb-divider">/</span><strong id="breadcrumb-current">Tổng quan</strong></div>
+                <div class="breadcrumbs"><span>Không gian làm việc</span><span class="breadcrumb-divider">/</span><strong id="breadcrumb-current">Chung</strong></div>
                 <div class="topbar-actions">
                     <button class="icon-button theme-button" id="theme-toggle" type="button" aria-label="Chuyển sang chế độ tối" aria-pressed="false" title="Chuyển sang chế độ tối">
                         <svg class="theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5a8.5 8.5 0 1 0 12 12Z"/></svg>
@@ -122,7 +129,7 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
                         <div class="notification-list" id="notification-list"></div>
                     </section>
                     <span class="topbar-divider"></span>
-                    <span class="avatar avatar-small"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span>
+                    <button class="topbar-profile-button" type="button" data-open-personal aria-label="Mở thông tin cá nhân"><span class="avatar avatar-small"><?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?></span></button>
                     <button class="logout-button" type="button" id="logout-button">Đăng xuất</button>
                 </div>
             </header>
@@ -407,6 +414,6 @@ $defaultExpiryDate = (new DateTimeImmutable('today'))->modify('+30 days')->forma
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/js/script.js"></script>
     <script src="assets/js/file-library.js"></script>
-    <script src="assets/js/folders.js"></script>
+    <script src="assets/js/folders.js?v=folder-move-panel-5"></script>
 </body>
 </html>

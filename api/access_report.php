@@ -35,6 +35,7 @@ $actionNames = [
     'download' => 'Tải xuống',
     'view' => 'Xem',
     'permission_granted' => 'Cấp quyền',
+    'permission_revoked' => 'Thu hồi quyền',
     'link_created' => 'Tạo liên kết',
     'link_revoked' => 'Thu hồi liên kết',
 ];
