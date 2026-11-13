@@ -5,7 +5,11 @@ require_once __DIR__ . '/bootstrap.php';
 $userId = require_authenticated_user();
 $result = pg_query_params(
     $conn,
-    "SELECT u.full_name, u.email, u.storage_limit AS storage_quota_bytes,
+    "SELECT u.full_name, u.email,
+            u.storage_limit + COALESCE((
+                SELECT SUM(sb.quota_bytes) FROM storage_boosts sb
+                WHERE sb.user_id = u.id AND sb.starts_at <= CURRENT_TIMESTAMP AND sb.expires_at > CURRENT_TIMESTAMP
+            ), 0)::bigint AS storage_quota_bytes,
             (SELECT COALESCE(SUM(f.file_size), 0)::bigint FROM files f WHERE f.owner_id = u.id) AS storage_used_bytes,
             (SELECT COUNT(*)::bigint FROM files f WHERE f.owner_id = u.id) AS file_count,
             (SELECT COUNT(*)::bigint FROM activity_logs al

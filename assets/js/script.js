@@ -52,6 +52,118 @@
         }
     };
 
+    const formatOnlineTime = (seconds) => {
+        const totalMinutes = Math.floor(seconds / 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return hours > 0 ? `${hours} giờ ${minutes} phút` : `${totalMinutes} phút`;
+    };
+
+    const renderRewardTasks = (tasks) => {
+        const grid = document.getElementById("reward-task-grid");
+        grid.replaceChildren();
+        tasks.forEach((task) => {
+            const card = document.createElement("article");
+            card.className = `reward-task-card${task.claimed ? " reward-task-complete" : ""}`;
+            card.id = `reward-task-${task.id}`;
+            const heading = document.createElement("div");
+            heading.className = "reward-task-heading";
+            const title = document.createElement("strong");
+            title.textContent = task.title;
+            const period = document.createElement("small");
+            period.textContent = task.period;
+            heading.append(title, period);
+            const progressText = document.createElement("div");
+            progressText.className = "reward-task-progress";
+            const progressLabel = document.createElement("span");
+            progressLabel.className = "reward-task-progress-value";
+            const isOnline = task.id.startsWith("online_");
+            progressLabel.textContent = isOnline
+                ? `${formatOnlineTime(task.progress)} / ${task.id.slice(7)} phút`
+                : `${task.progress} / ${task.goal} lần`;
+            const reward = document.createElement("strong");
+            reward.textContent = task.claimed ? "Đã nhận" : `+${task.coins} xu`;
+            progressText.append(progressLabel, reward);
+            const progress = document.createElement("div");
+            progress.className = "reward-progress-track";
+            const fill = document.createElement("span");
+            fill.style.width = `${Math.min(100, Math.round(task.progress * 100 / task.goal))}%`;
+            progress.append(fill);
+            card.append(heading, progressText, progress);
+            grid.append(card);
+        });
+    };
+
+    const refreshRewards = async () => {
+        const rewards = await apiRequest("api/rewards.php");
+        document.getElementById("header-coin-balance").textContent = rewards.coins.toLocaleString("vi-VN");
+        document.getElementById("rewards-coin-balance").textContent = rewards.coins.toLocaleString("vi-VN");
+        document.getElementById("online-time-today").textContent = formatOnlineTime(rewards.online_seconds_today);
+        document.getElementById("reward-storage-status").textContent = rewards.active_boost_bytes > 0
+            ? `Đang có thêm ${formatStorage(rewards.active_boost_bytes)} dung lượng thưởng; gói gần hết hạn vào ${new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium" }).format(new Date(rewards.next_boost_expiry))}.`
+            : "Chưa có gói dung lượng thưởng nào đang hoạt động.";
+        renderRewardTasks(rewards.tasks);
+        document.querySelectorAll(".reward-redeem-button").forEach((button) => {
+            const price = Number(button.dataset.coinPrice);
+            button.disabled = rewards.coins < price;
+        });
+        return rewards;
+    };
+
+    const updateOnlineTaskProgress = (seconds) => {
+        document.getElementById("online-time-today").textContent = formatOnlineTime(seconds);
+        document.querySelectorAll(".reward-task-card[id^='reward-task-online_']").forEach((card) => {
+            const minutes = Number(card.id.split("_").pop());
+            const goal = minutes * 60;
+            const value = Math.min(goal, seconds);
+            const progressLabel = card.querySelector(".reward-task-progress-value");
+            if (progressLabel) progressLabel.textContent = `${formatOnlineTime(value)} / ${minutes} phút`;
+            const fill = card.querySelector(".reward-progress-track span");
+            if (fill) fill.style.width = `${Math.min(100, Math.round(value * 100 / goal))}%`;
+        });
+    };
+
+    let onlinePingErrorShown = false;
+    const pingOnline = async () => {
+        try {
+            const previousSeconds = Number(document.getElementById("online-time-today").dataset.seconds || 0);
+            const { online_seconds_today: seconds } = await apiRequest("api/online_ping.php", { method: "POST", body: {} });
+            onlinePingErrorShown = false;
+            document.getElementById("online-time-today").dataset.seconds = String(seconds);
+            updateOnlineTaskProgress(seconds);
+            if (seconds < previousSeconds || Math.floor(seconds / 900) > Math.floor(previousSeconds / 900)) {
+                await refreshRewards();
+            }
+        } catch (error) {
+            if (!onlinePingErrorShown) showToast(error.message);
+            onlinePingErrorShown = true;
+        }
+    };
+
+    const rewardStore = [
+        ["week_1", 500], ["week_2", 950], ["month_1", 2500], ["month_3", 4850],
+        ["month_6", 7620], ["month_9", 10300], ["year_1", 13870],
+    ];
+    rewardStore.forEach(([planId, coins]) => {
+        const button = document.querySelector(`[data-plan-id="${planId}"]`);
+        button.dataset.coinPrice = String(coins);
+        button.addEventListener("click", async () => {
+            if (!window.confirm(`Đổi gói này với ${coins.toLocaleString("vi-VN")} xu?`)) return;
+            button.disabled = true;
+            try {
+                const { message } = await apiRequest("api/redeem_storage.php", {
+                    method: "POST",
+                    body: { plan_id: planId },
+                });
+                await Promise.all([refreshRewards(), loadAccount()]);
+                showToast(message);
+            } catch (error) {
+                showToast(error.message);
+                button.disabled = false;
+            }
+        });
+    });
+
     const applyTheme = () => {
         document.body.dataset.theme = userPreferences.theme;
         document.getElementById("setting-theme").value = userPreferences.theme;
@@ -202,6 +314,7 @@
             upload: "Tải tệp lên",
             shared: "Chi tiết tệp",
             folders: "Thư mục",
+            rewards: "Nhiệm vụ & xu",
             personal: "Thông tin cá nhân",
             settings: "Cài đặt người dùng",
             upgrade: "Nâng cấp dung lượng",
@@ -548,6 +661,13 @@
                 loadSharedFiles();
             }
             activateView(viewName);
+            if (viewName === "rewards") refreshRewards().catch((error) => showToast(error.message));
+        });
+    });
+    document.querySelectorAll('[data-view="rewards"]:not(.nav-link)').forEach((button) => {
+        button.addEventListener("click", () => {
+            activateView("rewards");
+            refreshRewards().catch((error) => showToast(error.message));
         });
     });
     document.querySelectorAll("[data-open-upload]").forEach((button) => {
@@ -716,6 +836,7 @@
             showToast("Đã lưu tệp vào cơ sở dữ liệu.");
             document.dispatchEvent(new CustomEvent("folders:refresh"));
             loadPersonalActivity();
+            refreshRewards().catch((error) => showToast(error.message));
             loadNotifications().catch((error) => showToast(error.message));
         } catch (error) {
             showToast(error.message);
@@ -866,6 +987,7 @@
                 showToast("Đã tạo liên kết nhưng không thể cập nhật danh sách chia sẻ.");
                 return;
             }
+            refreshRewards().catch((error) => showToast(error.message));
             if (copyLink) {
                 if (!navigator.clipboard?.writeText) {
                     showToast("Đã tạo liên kết, nhưng trình duyệt không hỗ trợ sao chép tự động.");
@@ -1102,7 +1224,7 @@
                 const item = document.createElement("div");
                 item.className = "activity-item";
                 const avatar = document.createElement("span");
-                avatar.className = "activity-avatar activity-purple";
+                avatar.className = "activity-avatar activity-blue";
                 avatar.textContent = "Bạn";
                 const details = document.createElement("div");
                 const title = document.createElement("p");
@@ -1190,6 +1312,11 @@
 
     loadFiles();
     loadAccount();
+    refreshRewards().then((rewards) => {
+        document.getElementById("online-time-today").dataset.seconds = String(rewards.online_seconds_today);
+    }).catch((error) => showToast(error.message));
+    window.setInterval(pingOnline, 30000);
+    pingOnline();
     loadPersonalActivity();
     loadNotifications().catch((error) => showToast(error.message));
 })();

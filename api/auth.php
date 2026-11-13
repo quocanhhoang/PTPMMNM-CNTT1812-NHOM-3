@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/reward_helpers.php';
 require_method('POST');
 require_csrf_token();
 $body = json_request_body();
@@ -74,6 +75,38 @@ if ($action === 'register') {
     $user = $record;
 } else {
     json_response(['error' => 'Thao tác đăng nhập không hợp lệ.'], 400);
+}
+
+if (!pg_query($conn, 'BEGIN')) {
+    error_log('Unable to begin login reward transaction: ' . pg_last_error($conn));
+    json_response(['error' => 'Không thể cập nhật thưởng đăng nhập.'], 500);
+}
+$loginDay = pg_query($conn, 'SELECT CURRENT_DATE::text AS today, EXTRACT(DOW FROM CURRENT_DATE)::integer AS day_of_week');
+if (!$loginDay) {
+    pg_query($conn, 'ROLLBACK');
+    error_log('Failed to determine login reward date: ' . pg_last_error($conn));
+    json_response(['error' => 'Không thể xác định ngày nhận thưởng.'], 500);
+}
+$day = pg_fetch_assoc($loginDay);
+try {
+    grant_reward_claim(
+        $conn,
+        (int) $user['id'],
+        'day',
+        $day['today'],
+        'login',
+        (int) $day['day_of_week'] === 0 ? 50 : 25,
+        (int) $day['day_of_week'] === 0 ? 'Thưởng đăng nhập Chủ nhật' : 'Thưởng đăng nhập hàng ngày'
+    );
+} catch (Throwable $error) {
+    pg_query($conn, 'ROLLBACK');
+    error_log('Failed to grant login reward: ' . $error->getMessage());
+    json_response(['error' => 'Không thể ghi nhận thưởng đăng nhập.'], 500);
+}
+if (!pg_query($conn, 'COMMIT')) {
+    pg_query($conn, 'ROLLBACK');
+    error_log('Failed to commit login reward: ' . pg_last_error($conn));
+    json_response(['error' => 'Không thể lưu thưởng đăng nhập.'], 500);
 }
 
 session_regenerate_id(true);

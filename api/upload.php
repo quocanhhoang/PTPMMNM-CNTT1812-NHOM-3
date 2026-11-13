@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/reward_helpers.php';
 require_method('POST');
 $userId = require_authenticated_user();
 require_csrf_token();
@@ -103,7 +104,15 @@ if (!pg_query($conn, 'BEGIN')) {
     error_log('Unable to begin upload transaction: ' . pg_last_error($conn));
     json_response(['error' => 'Không thể kiểm tra dung lượng tài khoản.'], 500);
 }
-$accountResult = pg_query_params($conn, 'SELECT storage_limit FROM users WHERE id = $1 FOR UPDATE', [$userId]);
+$accountResult = pg_query_params(
+    $conn,
+    'SELECT storage_limit + COALESCE((
+        SELECT SUM(quota_bytes) FROM storage_boosts
+        WHERE user_id = users.id AND starts_at <= CURRENT_TIMESTAMP AND expires_at > CURRENT_TIMESTAMP
+     ), 0)::bigint AS effective_storage_limit
+     FROM users WHERE id = $1 FOR UPDATE',
+    [$userId]
+);
 $account = $accountResult ? pg_fetch_assoc($accountResult) : false;
 $usageResult = $account ? pg_query_params($conn, 'SELECT COALESCE(SUM(file_size), 0)::bigint AS used FROM files WHERE owner_id = $1', [$userId]) : false;
 $usage = $usageResult ? pg_fetch_result($usageResult, 0, 'used') : false;
@@ -112,7 +121,7 @@ if (!$account || $usage === false) {
     error_log('Unable to check storage quota: ' . pg_last_error($conn));
     json_response(['error' => 'Không thể kiểm tra dung lượng tài khoản.'], 500);
 }
-if ((int) $usage + $fileSize > (int) $account['storage_limit']) {
+if ((int) $usage + $fileSize > (int) $account['effective_storage_limit']) {
     pg_query($conn, 'ROLLBACK');
     json_response(['error' => 'Không đủ dung lượng tài khoản để lưu tệp này.'], 413);
 }
@@ -176,6 +185,7 @@ try {
     if (!$activity) {
         throw new RuntimeException(pg_last_error($conn));
     }
+    award_activity_missions($conn, $userId, 'upload');
     $notification = pg_query_params(
         $conn,
         "INSERT INTO notifications (user_id, type, title, message)

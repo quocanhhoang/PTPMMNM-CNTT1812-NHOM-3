@@ -122,6 +122,80 @@
         });
     };
 
+    const formatOnlineDuration = (seconds) => {
+        const totalMinutes = Math.floor(seconds / 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${hours} giờ ${minutes} phút`;
+    };
+
+    const renderLeaderboard = (elementId, users, metric) => {
+        const container = document.getElementById(elementId);
+        container.replaceChildren();
+        if (users.length === 0) {
+            container.textContent = "Chưa có dữ liệu.";
+            return;
+        }
+
+        const chart = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        chart.setAttribute("viewBox", "0 0 600 170");
+        chart.setAttribute("role", "img");
+        chart.setAttribute("aria-label", "Biểu đồ miền top 10");
+        const max = Math.max(1, ...users.map((user) => user.value));
+        const coordinates = users.map((user, index) => {
+            const x = users.length === 1 ? 300 : 20 + index * 560 / (users.length - 1);
+            return [x, 140 - user.value / max * 115];
+        });
+        const area = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        area.setAttribute("points", `20,145 ${coordinates.map(([x, y]) => `${x},${y}`).join(" ")} 580,145`);
+        area.setAttribute("class", "leaderboard-area-fill");
+        chart.append(area);
+        coordinates.forEach(([x, y], index) => {
+            const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            point.setAttribute("cx", String(x));
+            point.setAttribute("cy", String(y));
+            point.setAttribute("r", "4");
+            point.setAttribute("class", "leaderboard-area-point");
+            const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+            title.textContent = `${users[index].full_name}: ${metric.format(users[index].value)}`;
+            point.append(title);
+            chart.append(point);
+        });
+        const list = document.createElement("ol");
+        list.className = "leaderboard-list";
+        users.forEach((user) => {
+            const item = document.createElement("li");
+            const name = document.createElement("span");
+            name.textContent = user.full_name;
+            name.title = user.email;
+            const value = document.createElement("strong");
+            value.textContent = metric.format(user.value);
+            item.append(name, value);
+            list.append(item);
+        });
+        container.append(chart, list);
+    };
+
+    const renderLeaderboards = (leaderboards) => {
+        renderLeaderboard("leaderboard-coins", leaderboards.coins, {
+            format: (value) => `${value.toLocaleString("vi-VN")} xu`,
+        });
+        renderLeaderboard("leaderboard-missions", leaderboards.missions, {
+            format: (value) => `${value.toLocaleString("vi-VN")} nhiệm vụ`,
+        });
+        renderLeaderboard("leaderboard-online", leaderboards.online, {
+            format: formatOnlineDuration,
+        });
+
+        const usersById = new Map();
+        Object.values(leaderboards).flat().forEach((user) => usersById.set(user.user_id, user));
+        const select = document.getElementById("admin-gift-user");
+        select.replaceChildren(new Option("Chọn người nhận", ""));
+        [...usersById.values()].sort((first, second) => first.full_name.localeCompare(second.full_name, "vi")).forEach((user) => {
+            select.add(new Option(`${user.full_name} (${user.email})`, String(user.user_id)));
+        });
+    };
+
     const renderUsers = (users) => {
         userResults.replaceChildren();
         if (users.length === 0) {
@@ -182,6 +256,7 @@
             renderActivity(data.recent_activity);
             renderTopFiles(data.top_files);
             renderChart(data.downloads_7_days);
+            renderLeaderboards(data.leaderboards);
         } catch (error) {
             showToast(error.message);
         }
@@ -190,6 +265,35 @@
     userSearch.addEventListener("input", () => {
         window.clearTimeout(userSearchTimer);
         userSearchTimer = window.setTimeout(searchUsers, 250);
+    });
+
+    document.getElementById("admin-gift-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+            const response = await fetch("api/admin_gift_coins.php", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrfToken,
+                },
+                body: JSON.stringify({
+                    user_id: Number(document.getElementById("admin-gift-user").value),
+                    coins: Number(document.getElementById("admin-gift-coins").value),
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Không thể tặng xu.");
+            form.reset();
+            showToast(`Đã tặng ${data.coins.toLocaleString("vi-VN")} xu cho ${data.recipient}.`);
+            await loadDashboard();
+        } catch (error) {
+            showToast(error.message);
+        } finally {
+            button.disabled = false;
+        }
     });
 
     document.getElementById("admin-logout").addEventListener("click", async () => {
